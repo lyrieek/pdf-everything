@@ -1,0 +1,18 @@
+/* ThemeToggle 样式 */
+
+.theme-toggle {
+  /* 继承 .icon-btn 的基础样式 */
+}
+
+/* 深色模式下的太阳图标颜色调整 */
+[data-theme='dark'] .theme-toggle svg {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .theme-toggle svg {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .theme-toggle:hover:not(:disabled) svg {
+  color: var(--text-primary);
+}

@@ -1,0 +1,53 @@
+{
+  "toolbar": {
+    "selectPdf": "Select PDF",
+    "changePdf": "Change PDF",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "zoomLevel": "Zoom level",
+    "themeToggle": "Toggle theme",
+    "properties": "PDF properties",
+    "singlePage": "Single page",
+    "doublePage": "Double page"
+  },
+  "dropZone": {
+    "title": "Drag and drop a PDF file here",
+    "hint": "or click to select"
+  },
+  "loading": "Loading PDF...",
+  "error": {
+    "failedToLoad": "Failed to load PDF",
+    "invalidFile": "Please drop a PDF file"
+  },
+  "pageInfo": {
+    "pages": "{{count}} page",
+    "pages_plural": "{{count}} pages"
+  },
+  "modal": {
+    "title": "PDF Properties",
+    "close": "Close",
+    "documentInfo": "Document Info",
+    "documentStats": "Document Stats",
+    "fileName": "File Name",
+    "author": "Author",
+    "subject": "Subject",
+    "creator": "Creator",
+    "producer": "Producer",
+    "created": "Created",
+    "modified": "Modified",
+    "pages": "Pages",
+    "currentZoom": "Current Zoom",
+    "unknown": "Unknown"
+  },
+  "aria": {
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "zoomLevel": "Zoom level",
+    "themeLight": "Switch to light mode",
+    "themeDark": "Switch to dark mode",
+    "properties": "PDF properties",
+    "closeModal": "Close",
+    "pageLayout": "Page layout",
+    "language": "Language"
+  }
+}

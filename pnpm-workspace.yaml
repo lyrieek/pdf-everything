@@ -1,0 +1,8 @@
+# pnpm 12 引入了 minimumReleaseAge 供应链策略（默认 24 小时）。
+# 升级 pnpm 时，tldts/tldts-core 的版本刚发布不久会被该策略拒绝；
+# 为保持与原 pnpm 10 一致的行为，此处关闭该时间窗口限制。
+minimumReleaseAge: 0
+
+# pnpm 默认不运行依赖的安装脚本；esbuild 需要构建产物才能工作。
+allowBuilds:
+  esbuild: true

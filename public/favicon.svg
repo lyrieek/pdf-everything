@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- 重新绘制的极细、流畅红色三叶交叉曲线（顶部高环 + 左下伸展 + 右下绕环） -->
+  <path d="M 48 6
+           C 53 6, 53 20, 48 33
+           C 42 47, 30 58, 22 61
+           C 16 63, 18 67, 25 65
+           C 38 61, 56 54, 73 53
+           C 83 52.5, 85 59, 77 61
+           C 68 63, 56 52, 49 38
+           C 43 26, 43 6, 48 6 Z" fill="none" stroke="#FF1A00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- 保持加粗、棕色、占满宽度的 "PDF" 文字 -->
+  <text x="50" y="95" text-anchor="middle" font-family="Arial, Helvetica, &#39;PingFang SC&#39;, &#39;Microsoft YaHei&#39;, sans-serif" font-weight="900" font-size="34" fill="#6B3E26">PDF</text>
+</svg>

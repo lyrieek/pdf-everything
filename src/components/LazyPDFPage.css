@@ -1,0 +1,17 @@
+/* LazyPDFPage 样式 */
+
+.lazy-page-wrapper {
+  width: 100%;
+}
+
+.page-placeholder {
+  width: 100%;
+  aspect-ratio: 0.71;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--border-light);
+}

@@ -1,0 +1,9 @@
+/* LanguageSlider 样式 */
+
+.language-slider__text {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  user-select: none;
+}

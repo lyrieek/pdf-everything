@@ -1,0 +1,458 @@
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-tertiary: #0f3460;
+  --bg-page: #ffffff;
+  --bg-page-shadow: rgba(0, 0, 0, 0.3);
+  --accent: #e94560;
+  --accent-hover: #d63652;
+  --text-primary: #eaeaea;
+  --text-secondary: #a0a0a0;
+  --text-muted: #6a6a8a;
+  --border-color: #2a2a4a;
+  --border-light: #3a3a5a;
+  --scrollbar-track: #1a1a2e;
+  --scrollbar-thumb: #3a3a5a;
+  --scrollbar-thumb-hover: #4a4a6a;
+  --drop-zone-border: #3a3a5a;
+  --drop-zone-bg: #1a1a2e;
+  --loading-bg: #16213e;
+  --error-bg: #2a0a0a;
+  --error-text: #e94560;
+  --input-bg: #1a1a2e;
+  --input-border: #2a2a4a;
+  --input-focus: rgba(233, 69, 96, 0.2);
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --transition: 0.2s ease;
+}
+
+[data-theme='light'] {
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e8e8ed;
+  --bg-page: #ffffff;
+  --bg-page-shadow: rgba(0, 0, 0, 0.1);
+  --accent: #d63652;
+  --accent-hover: #c02b45;
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a5a7a;
+  --text-muted: #8a8a9a;
+  --border-color: #d0d0d8;
+  --border-light: #e0e0e8;
+  --scrollbar-track: #f0f0f5;
+  --scrollbar-thumb: #c0c0cc;
+  --scrollbar-thumb-hover: #a0a0ac;
+  --drop-zone-border: #d0d0d8;
+  --drop-zone-bg: #f5f5f7;
+  --loading-bg: #ffffff;
+  --error-bg: #fdeaea;
+  --error-text: #d63652;
+  --input-bg: #ffffff;
+  --input-border: #d0d0d8;
+  --input-focus: rgba(214, 54, 82, 0.2);
+  --modal-overlay: rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pdf-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-secondary);
+  transition: background var(--transition);
+}
+
+.pdf-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  gap: 16px;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-input {
+  display: none;
+}
+
+.file-label {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background var(--transition),
+    transform var(--transition);
+}
+
+.file-label:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.file-label:active {
+  transform: translateY(0);
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.zoom-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.zoom-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-input {
+  width: 60px;
+  height: 32px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
+  padding: 0 8px;
+  outline: none;
+  transition: all var(--transition);
+}
+
+.zoom-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--input-focus);
+}
+
+.zoom-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-input::-webkit-inner-spin-button,
+.zoom-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.zoom-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-error {
+  padding: 12px 16px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-bottom: 1px solid var(--error-text);
+  font-size: 14px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pdf-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.pdf-container {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-y: auto;
+  min-height: 0;
+  background: var(--bg-primary);
+  transition: background var(--transition);
+}
+
+.drop-zone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--drop-zone-border);
+  border-radius: var(--radius-lg);
+  margin: 24px;
+  background: var(--drop-zone-bg);
+  transition: all var(--transition);
+}
+
+.drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+  border-style: solid;
+}
+
+.drop-zone p {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.drop-hint {
+  font-size: 13px !important;
+  opacity: 0.7;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--loading-bg);
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.loading::after {
+  content: '';
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pdf-pages {
+  position: relative;
+  width: 100%;
+  /* Keep page scale stable when the minimap takes up horizontal space. */
+  min-width: min-content;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+}
+
+/* 双页视图：两列网格，内容超出时保持可横向滚动且左侧不被裁剪 */
+.pdf-pages--double {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  align-items: start;
+  gap: 28px 16px;
+  width: max-content;
+  min-width: 100%;
+  margin-inline: auto;
+}
+
+.pdf-pages--double .pdf-page-wrapper {
+  margin-bottom: 0;
+}
+
+.pdf-page-wrapper {
+  position: relative;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-page);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+
+.pdf-page-wrapper:hover {
+  transform: scale(1.005);
+  box-shadow: 0 12px 40px var(--bg-page-shadow);
+}
+
+.pdf-page-wrapper canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.page-number {
+  position: absolute;
+  bottom: -20px;
+  right: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border: 1px solid var(--border-color);
+  border-right: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-container::-webkit-scrollbar {
+  display: none;
+}
+
+.pdf-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (max-width: 768px) {
+  .pdf-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .toolbar-left,
+  .toolbar-center,
+  .toolbar-right {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .toolbar-center {
+    order: 3;
+  }
+
+  .page-number {
+    bottom: -18px;
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}

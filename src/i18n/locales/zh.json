@@ -1,0 +1,52 @@
+{
+  "toolbar": {
+    "selectPdf": "选择 PDF",
+    "changePdf": "更换 PDF",
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "zoomLevel": "缩放级别",
+    "themeToggle": "切换主题",
+    "properties": "PDF 属性",
+    "singlePage": "单页",
+    "doublePage": "双页"
+  },
+  "dropZone": {
+    "title": "将 PDF 文件拖拽到此处",
+    "hint": "或点击选择文件"
+  },
+  "loading": "正在加载 PDF...",
+  "error": {
+    "failedToLoad": "加载 PDF 失败",
+    "invalidFile": "请拖拽 PDF 文件"
+  },
+  "pageInfo": {
+    "pages": "{{count}} 页"
+  },
+  "modal": {
+    "title": "PDF 属性",
+    "close": "关闭",
+    "documentInfo": "文档信息",
+    "documentStats": "文档统计",
+    "fileName": "文件名",
+    "author": "作者",
+    "subject": "主题",
+    "creator": "创建工具",
+    "producer": "生成工具",
+    "created": "创建时间",
+    "modified": "修改时间",
+    "pages": "页数",
+    "currentZoom": "当前缩放",
+    "unknown": "未知"
+  },
+  "aria": {
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "zoomLevel": "缩放级别",
+    "themeLight": "切换到浅色模式",
+    "themeDark": "切换到深色模式",
+    "properties": "PDF 属性",
+    "closeModal": "关闭",
+    "pageLayout": "页面布局",
+    "language": "语言"
+  }
+}
