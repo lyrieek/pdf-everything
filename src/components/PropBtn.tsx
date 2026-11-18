@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import * as pdfjsLib from 'pdfjs-dist'
 
 import { Tooltip } from './Tooltip'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import './PropBtn.css'
 
 interface PropBtnProps {
@@ -63,9 +64,17 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
     if (e.target === e.currentTarget) setIsOpen(false)
   }, [])
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') setIsOpen(false)
-  }, [])
+  // 焦点管理：Tab 循环限制在模态框内、Escape 关闭、关闭后焦点还原到触发按钮
+  const modalRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const closeModal = useCallback(() => setIsOpen(false), [])
+
+  useFocusTrap({
+    active: isOpen && !!pdfDoc,
+    containerRef: modalRef,
+    onEscape: closeModal,
+    returnFocusRef: triggerRef,
+  })
 
   // 判断值是否为未知
   const isUnknown = (value?: string) => !value || value === t('modal.unknown')
@@ -75,6 +84,7 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
     <>
       <Tooltip label={t('aria.properties')} align="end">
         <button
+          ref={triggerRef}
           className="icon-btn"
           onClick={() => setIsOpen(true)}
           disabled={!pdfDoc}
@@ -99,9 +109,9 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
 
       {isOpen && pdfDoc && (
         <div
+          ref={modalRef}
           className="modal-overlay"
           onClick={handleOverlayClick}
-          onKeyDown={handleKeyDown}
           tabIndex={-1}
           role="dialog"
           aria-modal="true"

@@ -18,7 +18,16 @@ import {
 vi.mock('pdfjs-dist', () => {
   const makePage = () => ({
     getViewport: vi.fn(() => ({ width: 800, height: 1000 })),
-    render: vi.fn(() => ({ promise: Promise.resolve() })),
+    getAnnotations: vi.fn(() => Promise.resolve([])),
+    render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
+    streamTextContent: vi.fn(
+      () =>
+        new ReadableStream({
+          start(c) {
+            c.close()
+          },
+        }),
+    ),
   })
   const doc = {
     numPages: 5,
@@ -27,7 +36,11 @@ vi.mock('pdfjs-dist', () => {
   }
   return {
     GlobalWorkerOptions: { workerSrc: '' },
-    getDocument: vi.fn(() => ({ promise: Promise.resolve(doc) })),
+    getDocument: vi.fn(() => ({ promise: Promise.resolve(doc), destroy: vi.fn() })),
+    TextLayer: vi.fn(() => ({ render: vi.fn(() => Promise.resolve()), cancel: vi.fn() })),
+    AnnotationMode: { DISABLE: 0, ENABLE: 1, ENABLE_FORMS: 2, ENABLE_STORAGE: 3 },
+    AnnotationLayer: vi.fn(() => ({ render: vi.fn(() => Promise.resolve()), destroy: vi.fn() })),
+    PDFWorker: vi.fn(() => ({ destroy: vi.fn() })),
   }
 })
 

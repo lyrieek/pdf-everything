@@ -17,7 +17,10 @@
   "loading": "Loading PDF...",
   "error": {
     "failedToLoad": "Failed to load PDF",
-    "invalidFile": "Please drop a PDF file"
+    "invalidFile": "Please drop a PDF file",
+    "invalidPdf": "File is not a valid PDF",
+    "passwordRequired": "This PDF is encrypted, please enter the password",
+    "incorrectPassword": "Incorrect password, please try again"
   },
   "pageInfo": {
     "pages": "{{count}} page",

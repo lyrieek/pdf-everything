@@ -169,6 +169,143 @@ body {
   white-space: nowrap;
 }
 
+/* 页码导航 */
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-nav-btn {
+  width: 28px;
+  height: 28px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  line-height: 1;
+}
+
+.page-nav-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.page-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-nav-current {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Outline 目录面板 */
+.outline-panel {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 8px 0;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.outline-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.outline-loading,
+.outline-empty {
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.outline-root {
+  list-style: none;
+}
+
+.outline-item {
+  list-style: none;
+}
+
+.outline-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: background var(--transition);
+  border-radius: var(--radius-sm);
+  margin: 1px 4px;
+  min-height: 28px;
+}
+
+.outline-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.outline-toggle {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.outline-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.outline-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-page {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.outline-children {
+  list-style: none;
+}
+
+.icon-btn.is-active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .zoom-btn {
   width: 32px;
   height: 32px;
@@ -407,6 +544,133 @@ body {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* PDFPage 文本层 + 注解层（共享 --total-scale-factor / --scale-factor） */
+.pdf-page-canvas {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --total-scale-factor: 1;
+  --scale-factor: 1;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.pdf-page-canvas__canvas {
+  display: block;
+}
+
+/* 文本层 */
+.pdf-page-canvas__text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+
+.pdf-page-canvas__text-layer span,
+.pdf-page-canvas__text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-page-canvas__text-layer span {
+  font-size: calc(var(--font-height, 1px) * var(--total-scale-factor, 1));
+}
+
+.pdf-page-canvas__text-layer .markedContent {
+  top: 0;
+  height: 0;
+}
+
+.pdf-page-canvas__text-layer ::selection {
+  background: var(--accent);
+  color: transparent;
+}
+
+/* 注解层：链接可点、表单可填 */
+.pdf-page-canvas__annotation-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  z-index: 2;
+}
+
+/* 每个注解一个 section，由 pdf.js 按 % 定位（需 absolute 才生效） */
+.pdf-page-canvas__annotation-layer section {
+  position: absolute;
+  text-align: initial;
+}
+
+/* 链接：铺满所在注解矩形，可点击 */
+.pdf-page-canvas__annotation-layer .linkAnnotation > a {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* 外链加下划线提示（内部页跳转由 JS 拦截，不加） */
+.pdf-page-canvas__annotation-layer a[href^='http'] {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1px;
+}
+
+/* 表单控件：透明背景，覆盖在 canvas 上 */
+.pdf-page-canvas__annotation-layer input,
+.pdf-page-canvas__annotation-layer select,
+.pdf-page-canvas__annotation-layer textarea,
+.pdf-page-canvas__annotation-layer button {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: calc(10px * var(--total-scale-factor, 1));
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.pdf-page-canvas__annotation-layer input:hover:not(:disabled),
+.pdf-page-canvas__annotation-layer select:hover:not(:disabled),
+.pdf-page-canvas__annotation-layer textarea:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pdf-page-canvas__annotation-layer input:focus,
+.pdf-page-canvas__annotation-layer select:focus,
+.pdf-page-canvas__annotation-layer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--input-focus);
+  background: var(--bg-page);
+}
+
+.pdf-page-canvas__annotation-layer input[type='checkbox'],
+.pdf-page-canvas__annotation-layer input[type='radio'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pdf-page-canvas__annotation-layer input[type='checkbox']:hover,
+.pdf-page-canvas__annotation-layer input[type='radio']:hover {
+  outline: 1px solid var(--accent);
 }
 
 .page-number {

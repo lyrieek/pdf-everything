@@ -1,214 +1,261 @@
-# PDF Everything — 资源完整性与功能补齐计划
+# PDF Everything — 待办计划
 
-> 本文只聚焦两件事：
-> 1. pdfjs-dist 的**配套资源缺失**导致的功能残缺问题（必须修）。
-> 2. 一个"完整 PDF 查看器"还应该补充的功能（建议按优先级推进）。
->
-> 体积问题已搁置，不在本文范围。
+> 已完成的部分已移出本文档，见 [README.md](./README.md)（概览）、[FEATURE.md](./FEATURE.md)（实现细节）、[TEST.md](./TEST.md)（测试方法）。
+> 本文只保留**尚未实现**的项，按优先级排序。
 
 ---
 
-## 0. 结论先行（TL;DR）
+## 状态总览
 
-- 现状：`PdfViewer.tsx:64` 的 `getDocument({ data: arrayBuffer })` **只传了 `data`，没有传任何资源基址**（`cMapUrl` / `standardFontDataUrl` / `wasmUrl` / `iccUrl` 全为 `null`）。
-- 后果：当某个 PDF **真正用到** cmaps / standard_fonts / wasm / iccs 中的某个文件时，pdf.js 会因为"不知道去哪取"而**抛错或降级渲染**。
-- 关键澄清：这些资源**本身就是按需加载的**——pdf.js 只在当前 PDF 真正需要某类资源时，才去 fetch 对应的**单个文件**。所以"补基址"**不等于**"把几百个文件提前下载"，只是告诉 pdf.js 去哪找。这正好满足"大部分 PDF 用不上、要按需加载"的诉求。
-- 修复目标：**提供 4 个资源基址 + 把对应目录部署到站点**，其余全部交给 pdf.js 懒加载。
-
----
-
-## 1. 问题定位（证据）
-
-| 事实 | 证据 |
-| --- | --- |
-| worker 用 `new URL(...import.meta.url)` 正确引入 | `src/components/PdfViewer.tsx:25-28` |
-| `getDocument` 只传 `data`，未传任何资源基址 | `src/components/PdfViewer.tsx:64` |
-| 缺基址时 `getFactoryUrlProp` 返回 `null` | `pdfjs-dist/build/pdf.mjs:16213-16217` |
-| 基址为 `null` 时，真正需要该资源会抛 `Ensure that the \`X\` API parameter is provided.` | `pdfjs-dist/build/pdf.mjs:7920-7923` |
-| 基址必须以 `/` 结尾，否则抛 `Invalid factory url` | `pdfjs-dist/build/pdf.mjs:7176-7184` |
-| 同源且三者齐全时走 worker 内 fetch（`useWorkerFetch`，更高效） | `pdfjs-dist/build/pdf.mjs:16243` |
-| `useWasm` 默认 `true`（即默认就尝试用 wasm 解码 JBIG2/JPX） | `pdfjs-dist/build/pdf.mjs:16239` |
-| 实测 `dist/` 只有 `worker / index.js / index.css`，**没有** `wasm/ cmaps/ standard_fonts/ iccs/` | `dist/assets/` 实际内容 |
-
-> 结论：worker 本身没问题；**缺的是 worker 运行时按需拉取的配套资源基址**。Vite 不会静态打包这些"运行时拼接 URL"的资源，必须显式提供基址 + 部署目录。
-
----
-
-## 2. 资源清单：每个资源的作用与缺失后果
-
-> 位置：`node_modules/pdfjs-dist/` 下。**以下全部是按需加载**，不会在打开普通 PDF 时下载。
-
-### 2.1 `wasm/` — WebAssembly 解码器（图像/色彩/JS 求值）
-
-| 文件 | 作用 | 触发的 PDF 特征 | 缺失后果 |
-| --- | --- | --- | --- |
-| `jbig2.wasm` | JBIG2 图像解码（二值图像，扫描件常见） | 含 JBIG2 压缩图像的 PDF | 该类图像无法解码 → 页面空白/报错 |
-| `openjpeg.wasm` | JPEG2000（JPX）解码 | 含 JPEG2000 图像的 PDF | 该类图像无法解码 → 页面空白/报错 |
-| `qcms_bg.wasm` | 颜色管理（CMYK/ICC 转换） | 依赖 ICC 色彩管理的 PDF | 颜色可能偏差或转换失败 |
-| `quickjs-eval.wasm` | 内嵌 JS 求值（少见特性） | 含相应 JS 的 PDF | 相关特性失效 |
-| `*_nowasm_fallback.js` | 无 wasm 时的纯 JS 回退 | 运行环境不支持 wasm | 无 wasm 时回退（有则更强） |
-
-- 是否按需：**是**。只有遇到对应图像/特性才 fetch 对应 `.wasm`。
-- 量级：约 `jbig2 103KB / openjpeg 220KB / qcms 96KB / quickjs 469KB` + 回退 JS。
-
-### 2.2 `cmaps/` — 预定义 CMap（中日韩字符映射，169 个 `.bcmap`）
-
-| 文件 | 作用 | 触发的 PDF 特征 | 缺失后果 |
-| --- | --- | --- | --- |
-| `Adobe-GB1-*` / `UniGB-*` / `GBK-*` 等 | 简体中文 CMap | 使用**非嵌入**中文字体 + 预定义 CMap 的中文 PDF | 中文**无法正确映射/提取**，出现乱码或空白 |
-| `Adobe-Japan1-*` / `UniJIS-*` / `RKSJ-*` | 日文 CMap | 日文 PDF | 日文乱码/空白 |
-| `Adobe-Korea1-*` / `UniKS-*` | 韩文 CMap | 韩文 PDF | 韩文乱码/空白 |
-| `Adobe-CNS1-*` / `UniCNS-*` / `B5*` | 繁体中文 CMap | 繁体 PDF | 繁体乱码/空白 |
-
-- 是否按需：**是**。仅当 PDF 引用某个预定义 CMap 时，才 fetch 对应**一个** `.bcmap`（不是整目录）。
-- 量级：单文件通常几 KB~几十 KB；整目录共 169 个。
-
-### 2.3 `standard_fonts/` — 14 标准字体的替代字体（Foxit + Liberation）
-
-| 文件 | 作用 | 触发的 PDF 特征 | 缺失后果 |
-| --- | --- | --- | --- |
-| `Foxit*.pfb` | 14 标准字体（Helvetica/Times/Courier/Symbol/Dingbats 等）的替代 | 使用**未嵌入**标准字体的 PDF | 字形/字宽不准，**排版错乱**；浏览器会先试系统字体（`useSystemFonts` 默认 `true`），系统没有时降级，效果不可控 |
-| `LiberationSans-*.ttf` | 无衬线替代 | 同上 | 同上 |
-
-- 是否按需：**是**。仅当用到未嵌入标准字体时 fetch。
-- 量级：单文件几十 KB~上百 KB。
-
-### 2.4 `iccs/` — ICC 颜色配置文件
-
-| 文件 | 作用 | 触发的 PDF 特征 | 缺失后果 |
-| --- | --- | --- | --- |
-| `CGATS001Compat-v2-micro.icc` | 色彩管理基础 profile | 依赖 ICC/CMYK 转换的 PDF | 颜色管理降级，颜色可能偏差 |
-
-- 是否按需：**是**。
-- 量级：极小（单文件）。
-
-### 2.5 `image_decoders/` — 独立的图片解码 worker 构建（可选）
-
-| 文件 | 作用 | 缺失后果 |
+| 优先级 | 事项 | 状态 |
 | --- | --- | --- |
-| `pdf.image_decoders.min.mjs` | 把图片解码放到独立 worker 的可选构建 | **不影响当前正确性**；属性能/大图优化项，可暂不部署 |
+| P0 | 4 类资源基址 + 部署目录 | ✅ 已完成（移出本文档） |
+| P1 | 渲染取消 / DPR / destroy / 错误分类 / 加密密码 / `%PDF` 校验 | ✅ 已完成（移出本文档） |
+| P2 | 文本层、页码跳转、目录、分批取页 | ✅ 已完成（移出本文档） |
+| P2 | **搜索、页面标签、worker 复用、`getDocument` 调优、移动端手势** | ⬜ 待做 |
+| P3 | 注解层、焦点管理 | ✅ 已完成（移出本文档） |
+| P3 | **旋转、适配模式、注释编辑、下载打印、加载进度** | ⬜ 待做 |
+| P3 | **可访问性补齐** | ⬜ 部分完成 |
+| — | 缩略图侧栏 | ⏸️ 已决策暂不做 |
 
 ---
 
-## 3. 修复方案（只给方案，不在本文实施）
+## P2 — 检索与加载优化
 
-### 方案 A（推荐）：构建期从 `node_modules` 拷贝到产物
+### 1. 全文搜索（`Ctrl+F` + 高亮 + 跳转）
 
-用 `vite-plugin-static-copy` 在 `vite build` 时把 4 个目录拷进 `dist/`，避免手工维护、并跟随 `pdfjs-dist` 版本：
+**现状**：文本层已就绪（文字可选中），但没有搜索。用户只能靠眼睛找。
 
-```
-dist/pdfjs/cmaps/...
-dist/pdfjs/standard_fonts/...
-dist/pdfjs/wasm/...
-dist/pdfjs/iccs/...
-```
+**实现要点**：
 
-优点：不污染仓库、与依赖版本同步。
-
-### 方案 B（无新依赖）：放进 `public/`
-
-把 4 个目录放到 `public/pdfjs/`，Vite 会原样复制到 `dist/pdfjs/`。缺点是需要在仓库里维护这些文件（或写个同步脚本）。
-
-### 方案 C：构建后脚本拷贝
-
-在 `build` 脚本里追加一步 `cp`/`node` 脚本，从 `node_modules/pdfjs-dist` 拷贝到 `dist/pdfjs/`。
-
-### 基址写法（三种方案通用）
-
-关键约束：**必须以 `/` 结尾**、且为**同源绝对 URL**（否则 `useWorkerFetch` 与 `isValidFetchUrl` 不生效）。在 `getDocument` 处补：
-
-```ts
-const base = import.meta.env.BASE_URL // 默认 "/"，部署在子路径时需相应配置
-pdfjsLib.getDocument({
-  data: arrayBuffer,
-  cMapPacked: true,
-  cMapUrl: `${base}pdfjs/cmaps/`,
-  standardFontDataUrl: `${base}pdfjs/standard_fonts/`,
-  wasmUrl: `${base}pdfjs/wasm/`,
-  iccUrl: `${base}pdfjs/iccs/`,
-  useWasm: true,
-})
-```
-
-> 说明：只补"基址"，具体文件仍由 pdf.js 按需 fetch——这正是"大部分 PDF 不下载这些资源"的实现方式。
-
-### 部署检查清单
-
-- [ ] `dist/pdfjs/{cmaps,standard_fonts,wasm,iccs}/` 存在。
-- [ ] 基址以 `/` 结尾、同源（`isValidFetchUrl` 通过）。
-- [ ] 子路径部署时 `BASE_URL` 正确。
-- [ ] 准备 4 类特征 PDF 做验证（见 §5）。
-
----
-
-## 4. 功能完整性待补（建议按优先级推进）
-
-> 现状可用能力：上传（拖拽/选择）、全量 `getPage`、canvas 渲染、虚拟滚动条、缩放（按钮/输入框/Ctrl+滚轮）、键盘导航、主题、属性弹窗、i18n、≥10 页懒加载。
-
-### A. 渲染正确性与稳定性（P1，实质是 bug）
-
-- **渲染任务未取消**：`PDFPage.tsx:34` 直接 `page.render().promise`，缩放切换/换文件/卸载时未 `cancel()`，易触发 `Cannot use the same canvas during multiple render() operations` 与资源泄漏。应保存 `RenderTask`，`useEffect` 清理时 `task.cancel()`。
-- **未适配 `devicePixelRatio`**：`PDFPage.tsx:24-27` 用 CSS 像素尺寸作为 canvas 宽高，高分屏（DPR>1）下**模糊**。应按 DPR 放大 backing store 并用 `transform` 缩放。
-- **未销毁文档/worker**：`PdfViewer.tsx` 换文件或卸载时未 `pdfDoc.destroy()` / `loadingTask.destroy()`，worker 与内存泄漏。
-- **错误分类太笼统**：`PdfViewer.tsx:75` 统一 `failedToLoad`。应对 `PasswordException`（加密，需密码）、`InvalidPDFException`（非 PDF/损坏）分别处理；并校验 `%PDF` 文件头。
-- **加密 PDF 无密码入口**：`getDocument` 未处理 `onPassword`，加密 PDF 直接失败。
-
-### B. 文本与搜索（P2）
-
-- **无文本层**：未渲染 `TextLayer`，用户**无法选中/复制**文字。pdfjs 主包已导出 `TextLayer`（`types/src/pdf.d.ts`）。
-- **无搜索**：无 `Ctrl+F` 全文搜索与高亮/跳转（依赖文本层）。
-
-### C. 导航（P2）
-
-- **无页码跳转 / 上一页 / 下一页**：只能靠滚动。
-- **无目录（outline）**：未用 `pdfDoc.getOutline()`。
-- **无缩略图侧栏**：无 `getPage` 缩略图导航。
-- **无页面标签**：未用 `getPageLabels()`（罗马数字/前缀页码）。
-
-### D. 显示模式（P3）
-
-- **无旋转**：缺 90° 顺/逆时针旋转。
-- **无适配模式**：缺"适合宽度 / 适合页面 / 实际大小"，只有数值缩放。
-- **无阅读模式**：缺单页/双页/连续滚动切换。
-
-### E. 标注与表单（P3）
-
-- **无 `AnnotationLayer`**：默认 `annotationMode = ENABLE`（`pdf.mjs:16655`）只画外观，**链接不可点、表单不可填**。需叠加 `AnnotationLayer`（主包已导出）才能交互。
-- **无注释/高亮交互**：无标注查看/编辑。
-
-### F. 文件与导出（P3）
-
-- **无下载 / 打印**：不能保存或打印当前文件。
-- **无加载进度**：未用 `loadingTask.onProgress` 显示百分比。
-
-### G. 性能与体验（P2/P3）
-
-- **未复用 `PDFWorker`**：每次换文件重建 worker；应复用单个 `PDFWorker`（`PDFWorker.fromPort`）减少抖动。
-- **`getDocument` 选项未调优**：可加 `maxImageSize`、`disableAutoFetch`、`enableHWA`、`canvasMaxAreaInBytes` 等。
-- **一次性 `getPage` 全部页**：`PdfViewer.tsx:68-73` 对上千页大文档会一次性拉全部页代理，内存与首屏压力大；建议按需/分批获取。
-- **移动端手势**：无双指缩放/触摸滚动优化。
-
-### H. 可访问性（P3）
-
-- **模态框焦点管理**：`PropBtn.tsx:102` 用 `tabIndex={-1}` 但无焦点陷阱、关闭后不还原焦点，键盘体验差。
-- 其余键盘可达性、ARIA 可进一步补齐。
-
----
-
-## 5. 优先级与验收
-
-| 优先级 | 事项 |
+| 环节 | 方案 |
 | --- | --- |
-| **P0** | 补 4 个资源基址 + 部署目录（否则功能残缺） |
-| **P1** | 渲染取消 / DPR / destroy / 错误分类 / 加密密码 / `%PDF` 校验 |
-| **P2** | 文本层 + 搜索 + 页码跳转 + 目录 + 缩略图 + 复用 worker |
-| **P3** | 旋转 / 适配 / 阅读模式 / 标注表单 / 下载打印 / 焦点管理 |
+| 文本索引 | 逐页 `page.getTextContent()`，结果缓存进 `WeakMap<PDFPageProxy, TextContent>` |
+| 匹配算法 | 纯函数 `findMatches(text, query, { caseSensitive, wholeWord })` → `Array<[start, end]>` |
+| 高亮 | 用 DOM `Range` 包裹文本层里的文本节点；或走 CSS Custom Highlight API（`CSS.highlights`） |
+| UI | 工具栏搜索框 + `上一个 / 下一个` + `n / total` 计数 + 大小写/全词开关 |
+| 跳转 | 命中后 `goToPage(物理页号)`，再滚动到首条命中的垂直位置 |
+| 性能 | 大文档需分片异步建索引 + 输入防抖（150–250ms），避免每敲一个字重扫全文 |
 
-### 验收：准备"特征 PDF"逐类验证
+**注意**：
 
-1. **CJK 预定义 CMap**：非嵌入中/日/韩文字体 PDF → 文本/渲染正确（验证 `cmaps/`）。
-2. **JBIG2 / JPEG2000 图像**：扫描件 → 图像正常显示（验证 `wasm/`）。
-3. **未嵌入标准字体**：用 Helvetica/Times 的 PDF → 排版正确（验证 `standard_fonts/`）。
-4. **加密 PDF**：需密码 → 弹密码框可解锁（验证 P1 错误分类）。
-5. **带链接/表单 PDF**：链接可点、字段可填（验证 P3 标注层）。
-6. **大文档（上千页）**：首屏与内存可控（验证 P2 分批加载）。
+- 文本层的 span 是按 PDF 文本块切的，**同一个词的字符可能跨多个 span**，Range 要跨节点处理。
+- 高亮层要放在 canvas 之上、文本层之下，否则会挡住文字选择。
+
+**验收**：`Ctrl+F` 聚焦搜索框；输入后显示 `3 / 17`；`Enter` / `Shift+Enter` 在命中间跳转；当前条高亮与其他条区分；切换到没有匹配的页时无报错。
+
+---
+
+### 2. 页面标签（`getPageLabels()`）
+
+**现状**：页码显示的是物理序号（1..N）。含罗马数字前言（i–xii）的 PDF 显示不正确。
+
+**实现要点**：
+
+- 加载后取 `pdfDoc.getPageLabels()`，返回 `string[] | null`，与 `numPages` 一一对应。
+- 页码指示、目录页码、双页布局的页脚、将来的缩略图统一走「标签优先，回退数字」的格式化函数。
+- **标签只用于展示**，跳转、内部链接一律用物理页号，两者不要混用。
+
+**验收**：带 `i–xii` 前言的 PDF，前言页显示罗马数字，正文页显示阿拉伯数字。
+
+---
+
+### 3. 复用 `PDFWorker`
+
+**现状**：`getDocument` 不传 `worker`，pdf.js 每次换文件都新建一个 worker。
+
+**实现要点**：
+
+- 模块级持有一个 `PDFWorker`（`new pdfjsLib.PDFWorker({ port })` 或 `PDFWorker.fromPort`），
+  `getDocument({ worker })` 复用。
+- 卸载时统一 `worker.destroy()`；换文件**不要**销毁。
+- 注意 `GlobalWorkerOptions.workerSrc` 与自建 `Worker` 只能二选一，混用会重复起线程。
+
+**验收**：连续打开 5 个不同 PDF，DevTools → Application → Workers 只有 1 个 pdf 相关 worker；切换文件无明显卡顿。
+
+---
+
+### 4. `getDocument` 选项调优
+
+**现状**：只传了 `data` + 资源基址 + `cMapPacked` + `useWasm`。
+
+**候选参数**：
+
+| 参数 | 作用 | 风险 |
+| --- | --- | --- |
+| `disableAutoFetch: true` | 不后台预取整份文件，配合分批取页降低首屏与内存压力 | 跨页跳转可能变慢（需要时再补 fetch） |
+| `maxImageSize` | 限制单张图解码尺寸，防止超大图打爆内存 | 设太小会让高清图失真 |
+| `enableHWA` | 启用硬件加速（浏览器支持时） | 部分环境反而更慢，需实测 |
+| `canvasMaxAreaInBytes` | 限制单页 canvas 面积，保护超大页面 | 超限会降质渲染 |
+
+**建议**：先只做 `disableAutoFetch` + `maxImageSize`，其余用真实大文档实测后再决定。
+
+**验收**：上千页文档首屏时间下降；Network 面板不再一次性拉完整份文件；跨页跳转仍能正常显示。
+
+---
+
+### 5. 移动端手势
+
+**现状**：只有滚轮缩放与键盘，触摸设备体验差。
+
+**实现要点**：
+
+- 双指捏合缩放：`touchstart` 记录两指距离，`touchmove` 按比例调整 `scale`（复用 `clampScale`）。
+- 单指拖拽平移：在缩放 > 100% 时接管，否则交给容器滚动。
+- 必须在阅读区设 `touch-action: none`，否则浏览器会抢走手势。
+- 与现有 `Ctrl+滚轮` 逻辑共用一个 `setScale` 入口，避免两套缩放状态。
+
+**验收**：手机 / 触摸板双指缩放生效；缩放后单指拖动可平移；不误触页面滚动。
+
+---
+
+## P3 — 显示与导出
+
+### 6. 旋转
+
+**现状**：无旋转。
+
+**实现要点**：
+
+- 新增 `rotation: 0 | 90 | 180 | 270` 状态，工具栏加左转 / 右转按钮。
+- 所有 viewport 计算统一带 rotation：`page.getViewport({ scale, rotation })`。
+- `PDFPage` 的 effect 依赖加入 `rotation`；文本层、注解层共用同一 viewport，**自动跟随**，无需单独处理。
+- 旋转 90°/270° 时 canvas 宽高互换，注意 wrapper 宽度也要跟着换。
+
+**验收**：旋转后内容正确转向、文本层与表单仍然对齐、页码定位（`offsetTop`）不偏移。
+
+---
+
+### 7. 适配模式
+
+**现状**：只有数值缩放（50%–300%），没有「适合宽度 / 适合页面 / 实际大小」。
+
+**实现要点**：
+
+| 模式 | 计算方式 |
+| --- | --- |
+| 实际大小 | `scale = 1` |
+| 适合宽度 | `scale = 容器宽 / 页面宽`（按当前页或首页） |
+| 适合页面 | `scale = min(容器宽/页宽, 容器高/页高)` |
+
+- 需要监听容器 `ResizeObserver`，窗口尺寸变化时重算（注意与现有 `measure()` 合并，避免两套观察器打架）。
+- 切换模式后缩放值随之变化，尽量保持当前阅读位置（用「当前页 + 页内比例」而非绝对 `scrollTop`）。
+
+**验收**：切模式后缩放值正确；窗口缩放时自适应；滚动位置不发生大幅跳变。
+
+---
+
+### 8. 注释 / 高亮交互
+
+**现状**：`enableAnnotationEditing: false`、`enableScripting: false`，只能看不能改。
+
+**实现要点**：
+
+- 编辑能力需要 `pdfjsLib.AnnotationEditorUIManager` + `AnnotationEditorLayer`（主包已导出），
+  注解层构造时传入 `annotationEditorUIManager`。
+- 先支持**查看注释内容**（hover / 点击弹出便签），再考虑新增高亮、便签。
+- 内嵌 JS 动作（Keystroke / Format 校验）需要 `enableScripting: true` + `hasJSActions` + `annotationStorage`，
+  注意它依赖 `linkService.eventBus`，目前该接口是空实现，需要先补齐。
+
+**验收**：能看到已有高亮与便签；可新增 / 编辑一条高亮；不破坏现有链接与表单。
+
+---
+
+### 9. 下载 / 打印
+
+**现状**：都不能。
+
+**实现要点**：
+
+- **下载**：`loadingTask.getData()` 拿原始字节 → `Blob` + `a[download]`。
+  注意加密 PDF 需要密码解锁后才能取到数据。
+- **打印**：
+  - 简易版：隐藏 iframe 里逐页 `page.render({ annotationMode: ENABLE_STORAGE })` 后 `iframe.print()`。
+  - 或者直接用 `window.print()` + `@media print` CSS，只打印当前 DOM（会有滚动/懒加载问题，不推荐）。
+  - 必须带 `AnnotationMode.ENABLE_STORAGE`，否则表单填写的内容打不出来。
+
+**验收**：下载得到与源文件一致的文件；打印预览包含所有页且表单值正确；懒加载文档不会漏页。
+
+---
+
+### 10. 加载进度
+
+**现状**：只有 loading 文案，没有百分比。
+
+**实现要点**：
+
+- `loadingTask.onProgress = ({ loaded, total }) => void`。
+- `total > 0` 时显示 `Math.round(loaded / total * 100)%`；`total === 0`（流式传输）时显示已加载字节数。
+- 进度只作用于「加载文档」阶段；分批 `getPage` 阶段的进度可以复用同一 UI（显示 `已加载页 / 总页数`）。
+
+**验收**：大文件加载时百分比递增；小文件一闪而过不报错；`total` 为 0 时有降级显示。
+
+---
+
+## P3 — 可访问性
+
+### 11. ARIA 补齐
+
+**现状**：虚拟滚动条（`role="scrollbar"` + 完整 `aria-value*`）、所有图标按钮（`aria-label`）、
+模态框（`role="dialog"` + `aria-modal`）已具备。以下缺失：
+
+| 位置 | 建议 |
+| --- | --- |
+| 目录树 `OutlinePanel` | `role="tree"` / `treeitem`、`aria-expanded`、`aria-level` |
+| 页码指示 | `aria-live="polite"`，翻页时播报当前页 |
+| 阅读区 | `tabindex="0"` + `role="region"` + `aria-label`，让键盘用户能聚焦滚动 |
+| 搜索结果计数（将来） | `role="status"` |
+
+**验收**：axe DevTools 扫描无 serious / critical 问题；纯键盘可完成「打开文件 → 翻页 → 看目录 → 看属性」全流程。
+
+---
+
+## 已决策：缩略图侧栏（暂不实现）
+
+保留 `src/components/ThumbnailSidebar.tsx` 的类型骨架（无实现、无调用）。
+
+**预定方案**（将来要做时）：
+
+- **闸门**：仅 `numPages <= 10` 时启用。真正的痛点是「为几百页各渲一张位图」，而非侧栏本身。
+- **不光栅化**：绝不调用 `page.render()`，只做一次 `getTextContent()` + `getOperatorList()` 的信号采集。
+- **三态 SVG**：`text`（纯文字页：页面边框 + 若干横条）/ `image`（含图页：占位块 + 少量文字线）/ `blank`（空白页：只有边框）。
+- **确定性**：图形长度用 `pageNumber` 作伪随机种子，保证同页每次一致，滚动不闪。
+- **可取消 + 缓存**：异步分类带 `AbortSignal`，结果进 `WeakMap<PDFDocumentProxy, ThumbnailItem[]>`。
+- **失败降级**：单页分类失败回落到 `FALLBACK_THUMBNAIL_KIND`，侧栏不因一页崩整体。
+
+---
+
+## 验收：特征 PDF 实测清单
+
+| # | 场景 | 验证目标 | 状态 |
+| --- | --- | --- | --- |
+| 1 | 非嵌入中/日/韩字体 + 预定义 CMap 的 PDF | `cmaps/` 按需生效，文本/渲染正确 | ⬜ 缺真实样本 |
+| 2 | 含 JBIG2 / JPEG2000 图像的扫描件 | `wasm/` 按需生效，图像正常 | ⬜ 缺真实样本 |
+| 3 | 使用 Helvetica / Times 的未嵌入字体 PDF | `standard_fonts/` 生效，排版正确 | 🟡 已可造（`mock_pdf.mjs -k text`），但未强制走资源路径 |
+| 4 | 加密 PDF | 弹密码框、输错提示、解锁后可读 | ⬜ 缺真实样本 |
+| 5 | 带链接 / 表单的 PDF | 链接可点、字段可填、值保留 | ✅ 已验证 |
+| 6 | 上千页大文档 | 首屏与内存可控、滚动不卡 | ⬜ 只验证过 60 页 |
+
+### 关于第 3 项
+
+pdf-lib 的 `StandardFonts` 生成的是 **base-14 未嵌入字体**（`/BaseFont /Helvetica`、
+`/Subtype /Type1`、无 `FontFile*`），所以本仓库脚本产出的每个 PDF 都天然是「未嵌入标准字体」。
+
+但 pdf.js 的 `useSystemFonts` **默认 `true`** —— 本机有 Helvetica 之类替代字体时，
+它根本不去 fetch `standard_fonts/`。因此「排版正确」能验，但「资源路径生效」验不到。
+
+要真正验证资源路径，需在 `getDocument` 里显式设 `useSystemFonts: false`
+（这会让跨平台渲染更一致，但是否要改是产品决策，暂未改动）。
+
+### 关于第 1 / 2 / 4 项
+
+这三类**不是格式只能解码**，而是 `pdf-lib` 缺少对应编码器：
+
+| 场景 | 可行的生成方式 |
+| --- | --- |
+| JBIG2 / JPEG2000 | `jbig2enc` / `opj_compress` 先编码，再嵌入；或用 `img2pdf` 原样嵌入 `.jbig2` / `.jp2` |
+| CJK 非嵌入 + 预定义 CMap | Ghostscript `-dEmbedAllFonts=false -dSubsetFonts=false`；或 LibreOffice 关闭「嵌入字体」导出 |
+| 加密 | `qpdf --encrypt user owner 256 -- in.pdf out.pdf`；或 Python `pypdf` / PyMuPDF |
+
+> 生成脚本：`scripts/mock_pdf.mjs`（`--help` 查用法）。
+> 它覆盖场景 3 / 5 / 6 与文本层、目录、空白页等；1 / 2 / 4 需借助上面的工具或外部样本。

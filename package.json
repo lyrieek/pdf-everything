@@ -12,10 +12,11 @@
     "preinstall": "node -e \"const ua=process.env.npm_config_user_agent||'';if(!ua.startsWith('pnpm')){console.error('\\nThis project uses pnpm. Run: pnpm install\\n');process.exit(1)}\"",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build-full": "tsc -b && vite build --mode full",
     "preview": "vite preview",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "lint": "oxfmt --check . && tsc --noEmit",
+    "lint": "oxfmt --check . && tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -38,6 +39,7 @@
     "oxlint": "^1.93.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.6",
+    "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^2.0.0"
   }
 }
