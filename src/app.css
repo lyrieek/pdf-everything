@@ -6,6 +6,8 @@
   --bg-page-shadow: rgba(0, 0, 0, 0.3);
   --accent: #e94560;
   --accent-hover: #d63652;
+  /* 文本选中高亮：半透明蓝，压在白色页面上仍能看清文字，避免整片死红 */
+  --selection-bg: rgba(59, 130, 246, 0.35);
   --text-primary: #eaeaea;
   --text-secondary: #a0a0a0;
   --text-muted: #6a6a8a;
@@ -596,7 +598,7 @@ body {
 }
 
 .pdf-page-canvas__text-layer ::selection {
-  background: var(--accent);
+  background: var(--selection-bg);
   color: transparent;
 }
 

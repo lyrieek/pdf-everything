@@ -20,6 +20,7 @@ pnpm test
 | `src/components/__tests__/interaction.test.tsx` | interaction 纯函数（clampScale/stepZoom/wheelZoomScale/scrollStepForKey/isEditableTarget）、键盘导航、Ctrl+滚轮缩放 |
 | `src/components/__tests__/Slider.test.tsx` | Slider 组件渲染/点击/方向键/禁用 |
 | `src/components/__tests__/newFeatures.test.tsx` | 新增 P1/P2 功能（见下） |
+| `src/components/__tests__/textSelection.test.tsx` | 文本选中：`::selection` 使用半透明 `--selection-bg`（非不透明 `--accent`，防「整片死红」回归）、`--selection-bg` 为 rgba 且 alpha<1、跨多个 span 选中时 `getSelection().toString()` 拼接正确 |
 | `src/lib/__tests__/pdfLoading.test.ts` | `pageBatches` 分批切页（每批大小、边界、空区间） |
 | `src/lib/__tests__/annotation.test.ts` | `createAnnotationStorage`（含 formattedValue 镜像）、`createDestResolver`（数字/对象引用/命名目标）、`createLinkService`（hash/外链属性/跳转） |
 | `src/lib/__tests__/useFocusTrap.test.tsx` | 焦点陷阱：初始焦点、Tab 循环、Escape 关闭、焦点还原 |
@@ -136,7 +137,12 @@ dist/pdfjs/images/         ← 注解图标 annotation-*.svg
 |------|----------|
 | 打开含文字的 PDF | 可以用鼠标选中文本 |
 | Ctrl+C 复制 | 剪贴板内容正确 |
-| 选中文本 | 高亮显示（半透明蓝色） |
+| 选中文本 | 高亮显示（半透明蓝色），文字仍清晰可见；不能是整片不透明色块 |
+
+> 选中的高亮色由 `src/app.css` 的 `--selection-bg`（`rgba(59, 130, 246, 0.35)`）决定，
+> `::selection` 只画背景、`color: transparent`（字形来自 canvas），所以半透明高亮下文字仍可读。
+> 自动化回归见 `textSelection.test.tsx`；真实浏览器逐像素验证：选中区主色为 `rgb(187,211,252)`
+> （= 0.35×蓝 + 0.65×白），区外为纯白 `rgb(255,255,255)`。
 
 #### 页码导航
 
