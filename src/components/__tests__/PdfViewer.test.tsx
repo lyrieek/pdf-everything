@@ -12,6 +12,7 @@ import {
   isOversizePage,
   oversizeMaxWidth,
 } from '../../lib/pdfLayout'
+import { formatPdfDate } from '../../lib/pdfDate'
 
 // Mock pdfjs-dist：构造一个 5 页、每页 800x1000 的假文档
 vi.mock('pdfjs-dist', () => {
@@ -33,15 +34,16 @@ vi.mock('pdfjs-dist', () => {
     getPage: vi.fn(() => Promise.resolve(makePage())),
     getMetadata: vi.fn(() =>
       Promise.resolve({
-        info: [
-          { Title: 'Test PDF' },
-          { Author: 'Test Author' },
-          { Subject: 'Test Subject' },
-          { Creator: 'Test Creator' },
-          { Producer: 'Test Producer' },
-          { CreationDate: 'D:20240101000000' },
-          { ModDate: 'D:20240101000000' },
-        ],
+        // pdf.js 的 info 是文档信息字典（普通对象），键为标准形式
+        info: {
+          Title: 'Test PDF',
+          Author: 'Test Author',
+          Subject: 'Test Subject',
+          Creator: 'Test Creator',
+          Producer: 'Test Producer',
+          CreationDate: 'D:20240101000000',
+          ModDate: 'D:20240101000000',
+        },
       }),
     ),
   }
@@ -52,6 +54,7 @@ vi.mock('pdfjs-dist', () => {
     AnnotationMode: { DISABLE: 0, ENABLE: 1, ENABLE_FORMS: 2, ENABLE_STORAGE: 3 },
     AnnotationLayer: vi.fn(() => ({ render: vi.fn(() => Promise.resolve()), destroy: vi.fn() })),
     PDFWorker: vi.fn(() => ({ destroy: vi.fn() })),
+    OPS: { setFont: 37 },
   }
 })
 
@@ -356,11 +359,14 @@ describe('ThemeToggle', () => {
 describe('PropBtn', () => {
   const mockPdfDoc = {
     numPages: 3,
-    getMetadata: vi.fn(() => Promise.resolve({ info: [] })),
+    getMetadata: vi.fn(() => Promise.resolve({ info: {} })),
   } as never
 
+  const pageAt = (width: number, height: number) =>
+    ({ getViewport: vi.fn(() => ({ width, height })) }) as never
+
   it('点击打开属性模态框，并显示传入的文件名', async () => {
-    render(<PropBtn pdfDoc={mockPdfDoc} pages={[]} scale={1} fileName="custom-name.pdf" />)
+    render(<PropBtn pdfDoc={mockPdfDoc} pages={[]} fileName="custom-name.pdf" />)
     const button = screen.getByRole('button', { name: 'aria.properties' })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(button)
@@ -372,7 +378,7 @@ describe('PropBtn', () => {
   })
 
   it('点击关闭按钮关闭模态框', async () => {
-    render(<PropBtn pdfDoc={mockPdfDoc} pages={[]} scale={1} fileName="a.pdf" />)
+    render(<PropBtn pdfDoc={mockPdfDoc} pages={[]} fileName="a.pdf" />)
     fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'aria.closeModal' }))
@@ -380,8 +386,181 @@ describe('PropBtn', () => {
   })
 
   it('无 pdfDoc 时按钮禁用', () => {
-    render(<PropBtn pdfDoc={null} pages={[]} scale={1} />)
+    render(<PropBtn pdfDoc={null} pages={[]} />)
     expect(screen.getByRole('button', { name: 'aria.properties' })).toBeDisabled()
+  })
+
+  it('从 info 对象读取并展示作者、主题、创建/生成工具与日期', async () => {
+    const doc = {
+      numPages: 3,
+      getMetadata: vi.fn(() =>
+        Promise.resolve({
+          info: {
+            Title: 'Doc Title',
+            Author: 'Ada Lovelace',
+            Subject: 'Analytical Engine',
+            Creator: 'Acme Creator',
+            Producer: 'Acme Producer',
+            CreationDate: 'D:20240101000000',
+            ModDate: 'D:20240102000000',
+          },
+        }),
+      ),
+    } as never
+    render(<PropBtn pdfDoc={doc} pages={[]} fileName="doc.pdf" />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => {
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Analytical Engine')).toBeInTheDocument()
+    expect(screen.getByText('Acme Creator')).toBeInTheDocument()
+    expect(screen.getByText('Acme Producer')).toBeInTheDocument()
+    // 日期按 PANEL_DATE_FORMAT + 当前语言（mock 为 en）格式化后展示，而非原始串
+    expect(screen.getByText(formatPdfDate('D:20240101000000', 'en') as string)).toBeInTheDocument()
+    expect(screen.getByText(formatPdfDate('D:20240102000000', 'en') as string)).toBeInTheDocument()
+  })
+
+  it('创建时间与修改时间相同时隐藏修改时间', async () => {
+    const doc = {
+      numPages: 3,
+      getMetadata: vi.fn(() =>
+        Promise.resolve({
+          info: { CreationDate: 'D:20240101000000', ModDate: 'D:20240101000000' },
+        }),
+      ),
+    } as never
+    render(<PropBtn pdfDoc={doc} pages={[]} fileName="a.pdf" />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.created')).toBeInTheDocument())
+    expect(screen.queryByText('modal.modified')).not.toBeInTheDocument()
+  })
+
+  it('≤10 页且各页尺寸全等时显示「所有页尺寸」', async () => {
+    const doc = { numPages: 3, getMetadata: vi.fn(() => Promise.resolve({ info: {} })) } as never
+    const pages = [pageAt(595.28, 841.89), pageAt(595.28, 841.89), pageAt(595.28, 841.89)]
+    render(<PropBtn pdfDoc={doc} pages={pages} fileName="a.pdf" currentPage={1} numPages={3} />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.allPagesSize')).toBeInTheDocument())
+    expect(screen.getByText('595 × 842 pt (A4)')).toBeInTheDocument()
+  })
+
+  it('各页尺寸不一致时显示当前页尺寸', async () => {
+    const doc = { numPages: 3, getMetadata: vi.fn(() => Promise.resolve({ info: {} })) } as never
+    const pages = [pageAt(595, 842), pageAt(800, 1000), pageAt(600, 900)]
+    render(<PropBtn pdfDoc={doc} pages={pages} fileName="a.pdf" currentPage={2} numPages={3} />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.currentPageSize')).toBeInTheDocument())
+    expect(screen.getByText('800 × 1000 pt（modal.approx 282 × 353 mm）')).toBeInTheDocument()
+  })
+
+  it('显示 PDF 版本号（PDFFormatVersion）', async () => {
+    const doc = {
+      numPages: 3,
+      getMetadata: vi.fn(() => Promise.resolve({ info: { PDFFormatVersion: '1.7' } })),
+    } as never
+    render(<PropBtn pdfDoc={doc} pages={[]} fileName="a.pdf" />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.version')).toBeInTheDocument())
+    expect(screen.getByText('1.7')).toBeInTheDocument()
+  })
+
+  it('创建时间与修改时间都缺失时隐藏修改时间', async () => {
+    const doc = { numPages: 3, getMetadata: vi.fn(() => Promise.resolve({ info: {} })) } as never
+    render(<PropBtn pdfDoc={doc} pages={[]} fileName="a.pdf" />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.created')).toBeInTheDocument())
+    expect(screen.queryByText('modal.modified')).not.toBeInTheDocument()
+  })
+
+  it('点击「计算所有页」：各页尺寸一致时替换为所有页尺寸', async () => {
+    const page = pageAt(595.28, 841.89)
+    const pages = Array.from({ length: 12 }, () => page)
+    const doc = {
+      numPages: 12,
+      getMetadata: vi.fn(() => Promise.resolve({ info: {} })),
+      getPage: vi.fn(() => Promise.resolve(page)),
+    } as never
+    render(<PropBtn pdfDoc={doc} pages={pages} fileName="a.pdf" currentPage={1} numPages={12} />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.currentPageSize')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'modal.computeAll' }))
+    await waitFor(() => expect(screen.getByText('modal.allPagesSize')).toBeInTheDocument())
+  })
+
+  it('点击「计算所有页」：尺寸不一致时弹出明细窗口', async () => {
+    const small = pageAt(595.28, 841.89)
+    const large = pageAt(800, 1000)
+    const pages = Array.from({ length: 12 }, (_, i) => (i % 2 === 0 ? small : large))
+    const doc = {
+      numPages: 12,
+      getMetadata: vi.fn(() => Promise.resolve({ info: {} })),
+      getPage: vi.fn(() => Promise.resolve(small)),
+    } as never
+    render(<PropBtn pdfDoc={doc} pages={pages} fileName="a.pdf" currentPage={1} numPages={12} />)
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.currentPageSize')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'modal.computeAll' }))
+    await waitFor(() => expect(screen.getByText('modal.pageSizes')).toBeInTheDocument())
+    // 两种尺寸 → 明细里两条「第 N 页」
+    expect(screen.getAllByText('modal.page')).toHaveLength(2)
+  })
+
+  it('所有页尺寸的值靠左布局（无按钮）', async () => {
+    const page = pageAt(595.28, 841.89)
+    const doc = { numPages: 2, getMetadata: vi.fn(() => Promise.resolve({ info: {} })) } as never
+    const { container } = render(
+      <PropBtn pdfDoc={doc} pages={[page, page]} fileName="a.pdf" currentPage={1} numPages={2} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    await waitFor(() => expect(screen.getByText('modal.allPagesSize')).toBeInTheDocument())
+    expect(container.querySelector('.page-size-cell')).not.toBeNull()
+    expect(container.querySelector('.page-size-cell--center')).toBeNull()
+  })
+
+  it('文档信息显示字体：最多 3 个，超过时弹出完整列表', async () => {
+    const fontNames = ['Helvetica', 'Arial', 'Times New Roman', 'Courier']
+    const page = {
+      getViewport: vi.fn(() => ({ width: 595, height: 842 })),
+      getOperatorList: vi.fn(() =>
+        Promise.resolve({
+          fnArray: fontNames.map(() => 37),
+          argsArray: fontNames.map((_, i) => [`g_f${i}`, 12]),
+        }),
+      ),
+      commonObjs: {
+        get: (id: string) => {
+          const name = fontNames[Number(id.replace('g_f', ''))]
+          // Arial 有字体文件 → 嵌入；其余视为系统/标准字体
+          return name === 'Arial'
+            ? { loadedName: name, data: new Uint8Array([1]) }
+            : { loadedName: name, missingFile: true }
+        },
+      },
+    }
+    const doc = {
+      numPages: 1,
+      getMetadata: vi.fn(() => Promise.resolve({ info: {} })),
+      getPage: vi.fn(() => Promise.resolve(page)),
+    } as never
+    render(
+      <PropBtn
+        pdfDoc={doc}
+        pages={[page as never]}
+        fileName="a.pdf"
+        currentPage={1}
+        numPages={1}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'aria.properties' }))
+    // 预览最多 3 个：第 4 个不出现
+    await waitFor(() => expect(screen.getByText(/Helvetica/)).toBeInTheDocument())
+    expect(screen.queryByText(/Courier/)).not.toBeInTheDocument()
+    // 超过 3 个 → 「更多字体」按钮
+    fireEvent.click(screen.getByRole('button', { name: 'modal.moreFonts' }))
+    await waitFor(() => expect(screen.getByText('modal.fonts · 4')).toBeInTheDocument())
+    expect(screen.getByText('Courier')).toBeInTheDocument()
+    // 嵌入字体带「嵌入」标签（仅 Arial）
+    expect(screen.getAllByText('modal.embedded')).toHaveLength(1)
   })
 })
 

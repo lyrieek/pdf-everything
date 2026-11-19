@@ -1,9 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
+import type { ComponentChildren } from 'preact'
 import { useTranslation } from 'react-i18next'
 import * as pdfjsLib from 'pdfjs-dist'
 
 import { Tooltip } from './Tooltip'
+import { TimeValue } from './TimeValue'
+import { PageSizeBreakdown } from './PageSizeBreakdown'
+import { FontListModal } from './FontListModal'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { parsePdfDate, formatDate } from '../lib/pdfDate'
+import { buildIni, copyToClipboard, type PropertyItem } from '../lib/propertyExport'
+import { usePageSizes } from '../lib/usePageSizes'
+import { usePerPageSize } from '../lib/usePerPageSize'
+import { useLinearized } from '../lib/useLinearized'
+import { usePdfFonts } from '../lib/usePdfFonts'
 import './PropBtn.css'
 
 interface PropBtnProps {
@@ -11,18 +21,42 @@ interface PropBtnProps {
   pdfDoc: pdfjsLib.PDFDocumentProxy | null
   /** 页面数组 */
   pages: pdfjsLib.PDFPageProxy[]
-  /** 当前缩放比例 */
-  scale: number
   /** 文件名（来自上传的文件） */
   fileName?: string
+  /** 当前阅读页（1-based），用于「当前页尺寸」 */
+  currentPage?: number
+  /** 总页数，用于「平均每页占用」与「所有页尺寸」判定 */
+  numPages?: number
+  /** 原始文件，用于「平均每页占用」的精确元数据解析与线性化检测；缺省则不计算 */
+  file?: File | null
+}
+
+interface DisplayItem extends PropertyItem {
+  /** 若提供则用它渲染值（时间戳的 tooltip、加载骨架等） */
+  node?: ComponentChildren
+  /** 若提供则在键名旁加 Tooltip 说明（如计算口径、概念解释） */
+  labelTooltip?: string
+  /** 键名 Tooltip 的弹出位置，默认 bottom（靠近弹窗底部的行用 top 避免被滚动区域裁剪） */
+  labelTooltipPlacement?: 'top' | 'bottom'
+}
+
+interface DisplayGroup {
+  title: string
+  items: DisplayItem[]
 }
 
 /** PDF 属性按钮 - 点击打开属性模态框 */
-export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
-  const { t } = useTranslation()
+export function PropBtn({ pdfDoc, pages, fileName, currentPage, numPages, file }: PropBtnProps) {
+  const { t, i18n } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [metadata, setMetadata] = useState<Record<string, string>>({})
   const fileNameRef = useRef(fileName)
+  const copyTimer = useRef<number | undefined>(undefined)
+
+  // 判断值是否为未知
+  const isUnknown = (value?: string) => !value || value === t('modal.unknown')
+  const formatValue = (value?: string) => value || t('modal.unknown')
 
   // 更新文件名引用
   useEffect(() => {
@@ -31,23 +65,30 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
 
   // 获取 PDF 元数据
   useEffect(() => {
-    if (pdfDoc) {
-      pdfDoc.getMetadata().then((data) => {
-        const info = data.info
+    if (!pdfDoc) return
+    let cancelled = false
+    pdfDoc
+      .getMetadata()
+      .then((data) => {
+        if (cancelled) return
+        // pdf.js 的 getMetadata() 返回 { info, metadata }，
+        // 其中 info 是文档信息字典（普通对象），键名已是标准形式：
+        // Title / Author / Subject / Creator / Producer / CreationDate / ModDate …
+        const info = data.info as Record<string, unknown> | null
         const meta: Record<string, string> = {}
-        if (Array.isArray(info)) {
-          for (const item of info) {
-            if (item && typeof item === 'object') {
-              for (const [key, value] of Object.entries(item)) {
-                // PDF.js 返回的键可能是小写或大写，统一转为标准形式
-                const normalizedKey = key.charAt(0).toUpperCase() + key.slice(1).toLowerCase()
-                meta[normalizedKey] = value as string
-              }
-            }
+        if (info && typeof info === 'object' && !Array.isArray(info)) {
+          for (const [key, value] of Object.entries(info)) {
+            // 仅保留字符串值，跳过布尔/数字等非展示字段（如 IsAcroFormPresent）
+            if (typeof value === 'string') meta[key] = value
           }
         }
         setMetadata(meta)
       })
+      .catch(() => {
+        if (!cancelled) setMetadata({})
+      })
+    return () => {
+      cancelled = true
     }
   }, [pdfDoc])
 
@@ -57,8 +98,142 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
   const subject = metadata.Subject
   const creator = metadata.Creator
   const producer = metadata.Producer
-  const creationDate = metadata.CreationDate
-  const modificationDate = metadata.ModDate
+  const creationDateObj = parsePdfDate(metadata.CreationDate)
+  const modificationDateObj = parsePdfDate(metadata.ModDate)
+  const creationDate = creationDateObj
+    ? formatDate(creationDateObj, i18n.language)
+    : metadata.CreationDate
+  const modificationDate = modificationDateObj
+    ? formatDate(modificationDateObj, i18n.language)
+    : metadata.ModDate
+
+  const totalPages = numPages ?? pdfDoc?.numPages ?? pages.length
+
+  const { pageSize, sizeGroups, scanning, computeAll, closeBreakdown } = usePageSizes({
+    pdfDoc,
+    pages,
+    currentPage,
+    totalPages,
+    isOpen,
+  })
+  const { perPageState, perPageText } = usePerPageSize({ file, totalPages, isOpen })
+  const { linearized, linearizedState } = useLinearized({ file, isOpen })
+  const { fonts, fontsState, fontPreview, fontModalOpen, openFontModal, closeFontModal, showMore } =
+    usePdfFonts({ pdfDoc, totalPages, isOpen })
+
+  // 修改时间缺失，或与创建时间相同，则隐藏「修改时间」（渲染与复制都生效，因为共用 groups）
+  const hideModified = !modificationDate || creationDate === modificationDate
+
+  // 平均每页占用未算出时：仅该行显示加载骨架，不影响其他属性行
+  const perPageNode: ComponentChildren =
+    perPageState === 'calculating' ? (
+      <span className="loading-inline" role="status" aria-label={t('modal.calculating')} />
+    ) : undefined
+
+  // 线性化检测中：仅该行显示加载骨架；检测不到文件（无 file）时显示未知
+  const linearizedNode: ComponentChildren =
+    linearizedState === 'calculating' ? (
+      <span className="loading-inline" role="status" aria-label={t('modal.calculating')} />
+    ) : undefined
+  const linearizedText =
+    linearized == null ? undefined : linearized ? t('modal.yes') : t('modal.no')
+
+  // 时间值：展示绝对时间，hover 显示实时相对时间（多久之前）
+  const creationNode: ComponentChildren = creationDateObj ? (
+    <TimeValue absolute={creationDate ?? ''} date={creationDateObj} locale={i18n.language} />
+  ) : undefined
+  const modificationNode: ComponentChildren = modificationDateObj ? (
+    <TimeValue
+      absolute={modificationDate ?? ''}
+      date={modificationDateObj}
+      locale={i18n.language}
+    />
+  ) : undefined
+
+  // 「当前页尺寸」的值右侧放「计算所有页」按钮（仅当前页尺寸时显示）
+  const pageSizeNode: ComponentChildren = (
+    <span className="page-size-cell">
+      <span>{formatValue(pageSize.value)}</span>
+      {pageSize.canCompute && (
+        <button type="button" className="btn-link" onClick={computeAll} disabled={scanning}>
+          {scanning ? t('modal.calculating') : t('modal.computeAll')}
+        </button>
+      )}
+    </span>
+  )
+
+  // 字体值：扫描中显示骨架；否则显示预览，超过 3 个时右侧给「更多字体」按钮
+  const fontsNode: ComponentChildren =
+    fontsState === 'calculating' ? (
+      <span className="loading-inline" role="status" aria-label={t('modal.calculating')} />
+    ) : (
+      <span className="page-size-cell">
+        <span>{formatValue(fontPreview)}</span>
+        {showMore && (
+          <button type="button" className="btn-link" onClick={openFontModal}>
+            {t('modal.moreFonts')}
+          </button>
+        )}
+      </span>
+    )
+
+  // 属性条目：渲染与「复制」共用同一份数据，键名/分组标题随当前语言
+  const infoItems: DisplayItem[] = [
+    { label: t('modal.fileName'), value: displayFileName },
+    { label: t('modal.version'), value: metadata.PDFFormatVersion },
+    {
+      label: t('modal.linearized'),
+      value: linearizedState === 'calculating' ? t('modal.calculating') : linearizedText,
+      node: linearizedNode,
+      labelTooltip: t('modal.linearizedTip'),
+    },
+    { label: t('modal.author'), value: author },
+    { label: t('modal.subject'), value: subject },
+    { label: t('modal.creator'), value: creator },
+    { label: t('modal.producer'), value: producer },
+    {
+      label: t('modal.fonts'),
+      value: fonts.length > 0 ? fonts.map((font) => font.name).join(', ') : undefined,
+      node: fontsNode,
+    },
+    { label: t('modal.created'), value: creationDate, node: creationNode },
+    ...(hideModified
+      ? []
+      : [{ label: t('modal.modified'), value: modificationDate, node: modificationNode }]),
+    { label: pageSize.label, value: pageSize.value, node: pageSizeNode },
+  ]
+
+  const groups: DisplayGroup[] = [
+    { title: t('modal.documentInfo'), items: infoItems },
+    {
+      title: t('modal.documentStats'),
+      items: [
+        { label: t('modal.pages'), value: String(totalPages) },
+        {
+          label: t('modal.avgPerPage'),
+          value: perPageText,
+          node: perPageNode,
+          labelTooltip: t('modal.avgPerPageTip'),
+          labelTooltipPlacement: 'top',
+        },
+      ],
+    },
+  ]
+
+  // 复制：序列化为 INI 写入剪贴板；成功显示「已复制」，失败显示「复制失败」
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(buildIni(groups, t('modal.unknown')))
+    setCopyStatus(ok ? 'copied' : 'failed')
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopyStatus('idle'), ok ? 1500 : 2000)
+  }
+
+  // 卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current)
+    }
+  }, [])
 
   const handleOverlayClick = useCallback((e: MouseEvent) => {
     if (e.target === e.currentTarget) setIsOpen(false)
@@ -70,15 +245,11 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
   const closeModal = useCallback(() => setIsOpen(false), [])
 
   useFocusTrap({
-    active: isOpen && !!pdfDoc,
+    active: isOpen && !!pdfDoc && !sizeGroups && !fontModalOpen,
     containerRef: modalRef,
     onEscape: closeModal,
     returnFocusRef: triggerRef,
   })
-
-  // 判断值是否为未知
-  const isUnknown = (value?: string) => !value || value === t('modal.unknown')
-  const formatValue = (value?: string) => value || t('modal.unknown')
 
   return (
     <>
@@ -142,62 +313,48 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
               </Tooltip>
             </div>
             <div className="modal-body">
-              <div className="property-group">
-                <h3>{t('modal.documentInfo')}</h3>
-                <dl className="properties-list">
-                  <div className="property-row">
-                    <dt>{t('modal.fileName')}</dt>
-                    <dd className={isUnknown(displayFileName) ? 'unknown' : ''}>
-                      {formatValue(displayFileName)}
-                    </dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.author')}</dt>
-                    <dd className={isUnknown(author) ? 'unknown' : ''}>{formatValue(author)}</dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.subject')}</dt>
-                    <dd className={isUnknown(subject) ? 'unknown' : ''}>{formatValue(subject)}</dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.creator')}</dt>
-                    <dd className={isUnknown(creator) ? 'unknown' : ''}>{formatValue(creator)}</dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.producer')}</dt>
-                    <dd className={isUnknown(producer) ? 'unknown' : ''}>
-                      {formatValue(producer)}
-                    </dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.created')}</dt>
-                    <dd className={isUnknown(creationDate) ? 'unknown' : ''}>
-                      {formatValue(creationDate)}
-                    </dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.modified')}</dt>
-                    <dd className={isUnknown(modificationDate) ? 'unknown' : ''}>
-                      {formatValue(modificationDate)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-              <div className="property-group">
-                <h3>{t('modal.documentStats')}</h3>
-                <dl className="properties-list">
-                  <div className="property-row">
-                    <dt>{t('modal.pages')}</dt>
-                    <dd>{pages.length}</dd>
-                  </div>
-                  <div className="property-row">
-                    <dt>{t('modal.currentZoom')}</dt>
-                    <dd>{Math.round(scale * 100)}%</dd>
-                  </div>
-                </dl>
-              </div>
+              {groups.map((group) => (
+                <div className="property-group" key={group.title}>
+                  <h3>{group.title}</h3>
+                  <dl className="properties-list">
+                    {group.items.map((item) => (
+                      <div className="property-row" key={item.label}>
+                        <dt>
+                          {item.labelTooltip ? (
+                            <Tooltip
+                              label={item.labelTooltip}
+                              align="start"
+                              wrap
+                              placement={item.labelTooltipPlacement ?? 'bottom'}
+                            >
+                              <span className="label-tip" tabIndex={0}>
+                                {item.label}
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            item.label
+                          )}
+                        </dt>
+                        <dd className={isUnknown(item.value) ? 'unknown' : ''}>
+                          {item.node ?? formatValue(item.value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
             </div>
             <div className="modal-footer">
+              <button
+                className={`btn btn-secondary${copyStatus === 'failed' ? ' is-error' : ''}`}
+                onClick={handleCopy}
+              >
+                {copyStatus === 'copied'
+                  ? t('modal.copied')
+                  : copyStatus === 'failed'
+                    ? t('modal.copyFailed')
+                    : t('modal.copy')}
+              </button>
               <button className="btn btn-primary" onClick={() => setIsOpen(false)}>
                 {t('modal.close')}
               </button>
@@ -205,6 +362,9 @@ export function PropBtn({ pdfDoc, pages, scale, fileName }: PropBtnProps) {
           </div>
         </div>
       )}
+
+      {sizeGroups && <PageSizeBreakdown groups={sizeGroups} onClose={closeBreakdown} />}
+      {fontModalOpen && <FontListModal fonts={fonts} onClose={closeFontModal} />}
     </>
   )
 }

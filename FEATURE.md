@@ -458,10 +458,61 @@ if (typeof patch.value === 'string' && patch.formattedValue === undefined) {
 | --- | --- |
 | 主题 | 浅色 / 深色；首次跟随系统 `prefers-color-scheme`，之后手动切换并记住 |
 | 国际化 | 中文 / 英文；首次跟随浏览器语言，之后手动切换并记住 |
-| Tooltip | 纯 CSS（`data-tooltip` + `::after`），悬停与键盘聚焦均触发，带 300ms 延迟 |
+| Tooltip | 纯 CSS（`data-tooltip` + `::after`），悬停与键盘聚焦均触发；`wrap` 选项支持长文本换行（属性键名提示用） |
 | Slider | 分段图标滑块（单页/双页、中文/English），支持鼠标点击、拖拽与 `←/→` |
-| 属性弹窗 | 文件名、作者、主题、创建者、生成器、创建/修改时间、页数、当前缩放；空值显示「未知」 |
+| 属性弹窗 | 文件名、版本号、作者、主题、创建者、生成器、字体、创建/修改时间、当前页 / 所有页尺寸、页数、平均每页占用（键名 hover 显示计算口径）、线性化（键名 hover 显示说明）；空值显示「未知」 |
+| 属性弹窗尺寸 | 宽度 640px（≥2200px 放宽到 720px）；`max-height: min(90vh, 1000px)`（大屏 1100px），平板到 4K 均可用 |
 | 响应式 | 窄屏下工具栏自动换行重排 |
+
+### 9.1 属性面板（PropBtn）
+
+**数据来源**：`pdfDoc.getMetadata()` 返回 `{ info, metadata }`，其中 `info` 是**普通对象**（不是数组），
+键名已是标准形式（`Title` / `Author` / `Subject` / `Creator` / `Producer` / `CreationDate` / `ModDate` / `PDFFormatVersion` …）。
+组件遍历 `Object.entries(info)`，只保留字符串值（跳过 `IsAcroFormPresent` 等布尔字段）。
+版本号直接取 `info.PDFFormatVersion`（如 `1.7`）。
+
+**日期**：
+- `parsePdfDate` 仅在字符串匹配 `D:YYYYMMDDHHmmSS…`（可带时区）时解析为 `Date`；否则视为「非 PDF 日期」，原样展示。
+- 绝对时间用 `PANEL_DATE_FORMAT` + 当前语言经 `Intl.DateTimeFormat` 输出（时区后缀忽略，按字面时间）。
+- 时间值是 `TimeValue` 组件：hover / 聚焦时通过 Tooltip 显示**实时相对时间**（`Intl.RelativeTimeFormat`，每 30s 刷新）。
+- **修改时间缺失，或与创建时间相同**，则隐藏「修改时间」（渲染与 INI 同时生效）。
+
+**页面尺寸**：
+- 取当前阅读页 `getViewport({ scale: 1 })` 的宽高（pt）。
+- `总页 ≤ 10` 且已加载页齐全、各页尺寸全等（±2pt）→ 标签变为「所有页尺寸」。
+- 标准尺寸识别（含横向，±2pt）：A3 / A4 / A5 / B4 / B5 / Letter / Legal → 追加 `(A4)` 等标签。
+- 未命中标准尺寸时**双单位**显示：`800 × 1000 pt（约 282 × 353 mm）`（`约` 走 i18n，避免符号歧义）。
+- 「当前页尺寸」右侧有**计算所有页**按钮：分批取页（优先用已加载页）后按尺寸分组——
+  - 全部一致 → 覆盖为「所有页尺寸」；
+  - 不一致 → 弹出尺寸明细窗口，最多 10 种，每种一个代表页，均为 pt + mm 双单位。
+
+**字体**：
+- 属性窗口打开时扫描**前 50 页**的 `getOperatorList()`：从 `setFont` 操作取字体资源名，再用 `page.commonObjs.get(ref).loadedName` 得到可读字体名，去重后最多 50 种。
+- 行内最多显示 3 个（逗号分隔）；超过 3 个时右侧出现「更多字体」按钮，点击弹出列表（最多 50 种，标题显示数量）。
+- 嵌入字体（PDF 内嵌字体文件）在列表中带「嵌入 / Embedded」标签；标准 / 系统字体不带。
+- 扫描异步执行、按 `pdfDoc` 缓存、单页失败忽略；不进入首屏加载路径。
+
+**平均每页占用**：
+- 口径：`(文件字节数 − 元数据字节数) / 总页数`。
+- 元数据 = Info 字典 + Metadata(XMP) 流，由 `pdfMeta.ts` 在**原始字节**上定位并累加对象跨度（对象流 / 加密场景按 0 计）。
+- 解析放在 **Web Worker**（`pdfMeta.worker.ts` + `pdfMetaClient.ts`）里，避免阻塞主线程；无法创建 Worker 时回退主线程。
+- 仅当**属性窗口打开**时才计算，并先让弹窗渲染；结果按 `File` 缓存；`> MAX_PRECISE_METADATA_BYTES`（128MB）则跳过解析、按 `文件大小 / 页数` 估算。
+- 未算出时**只有该行**显示骨架加载（`.loading-inline`），其他属性行不受影响。
+- 键名带 Tooltip（i18n）：`（文件总字节数 − Info/XMP 元数据字节数）÷ 总页数`，超过 128MB 按 `文件大小 / 页数` 估算。
+
+**线性化 / Fast Web View**：
+- 文档信息组新增「线性化」（en：Linearized）属性，显示「是 / 否」（无原始 `file` 时为「未知」）；键名可 hover 看 Fast Web View 说明。
+- 检测口径：读取文件头部前 4KB（`LINEARIZED_SCAN_BYTES`），`pdfMeta.ts` 的 `detectLinearized` 在原始字节上查找 `/Linearized` 字典（Fast Web View 字典必然是文件中第一个对象）。
+- 由 `useLinearized` Hook 在**属性窗口打开**时检测，只读头部切片、按 `File` 缓存；检测中该行显示骨架加载。
+- 键名带 Tooltip（i18n），解释 Fast Web View：把首页内容放在文件最前面，可边下载边显示首页。
+
+**复制**：
+- `buildIni` 把当前 `groups` 序列化为 INI（`[分组]` + `键 = 值`，空值写「未知」），键名 / 分组标题随当前语言。
+- `copyToClipboard` 优先 Clipboard API，失败回退 `textarea + execCommand`。
+- 成功显示「已复制」，失败显示「复制失败」（错误色描边），稍后恢复。
+
+> **为什么这些计算都「点开才算」**：`getViewport` / 读文件 / 解码扫描都只在 `isOpen` 时触发，
+> 不进入首屏加载路径，避免拖慢打开 PDF 的速度。
 
 ---
 
@@ -483,6 +534,7 @@ Escape 由同一钩子处理，关闭后同样还原焦点。
 - 虚拟滚动条：`role="scrollbar"` + 完整 `aria-value*`
 - 所有图标按钮：`aria-label`
 - 模态框：`role="dialog"` + `aria-modal` + `aria-labelledby`
+- 属性弹窗行内骨架加载（平均每页占用 / 线性化 / 字体 / 当前页尺寸）：`role="status"` + `aria-label`
 - 装饰性 SVG / 页码轨道：`aria-hidden`
 
 ### 10.3 尚缺（见 PLAN.md）
@@ -509,6 +561,14 @@ Escape 由同一钩子处理，关闭后同样还原焦点。
 | 分批取页大小 | 24 页 | `pdfLoading.ts` |
 | 加载进度格式化 | `formatBytes` / `formatLoadProgress` | `loadProgress.ts` |
 | 注解图标路径 | `${BASE_URL}pdfjs/images/` | `annotation.ts` |
+| 面板日期格式 | `PANEL_DATE_FORMAT`（年月日时分秒，`hour12: false`） | `pdfDate.ts` |
+| 页面尺寸容差 | 2pt | `pageSize.ts`（`SIZE_TOLERANCE`） |
+| 标准尺寸（pt） | A3 842×1191 / A4 595×842 / A5 420×595 / B4 729×1032 / B5 516×729 / Letter 612×792 / Legal 612×1008 | `pageSize.ts` |
+| 相对时间刷新间隔 | 30s | `TimeValue.tsx` |
+| 元数据精确解析上限 | 128MB | `pdfMeta.ts`（`MAX_PRECISE_METADATA_BYTES`） |
+| 字体扫描页数上限 | 50 页 | `PropBtn.tsx`（`FONT_SCAN_PAGE_LIMIT`） |
+| 字体列表上限 | 50 种 | `PropBtn.tsx`（`FONT_LIST_LIMIT`） |
+| 字体行内预览数量 | 3 个 | `PropBtn.tsx` |
 
 ---
 
@@ -525,6 +585,9 @@ src/
 │   ├── VirtualScrollbar.tsx     # 虚拟滚动条
 │   ├── OutlinePanel.tsx         # 目录树
 │   ├── PropBtn.tsx              # 文档属性按钮 + 模态框
+│   ├── PageSizeBreakdown.tsx    # 页面尺寸明细弹窗（最多 10 种，pt + mm）
+│   ├── FontListModal.tsx        # 字体列表弹窗（最多 50 种）
+│   ├── TimeValue.tsx            # 时间值：绝对时间 + hover 相对时间 tooltip
 │   ├── Slider.tsx               # 分段图标滑块
 │   ├── LanguageSlider.tsx       # 语言切换
 │   ├── ThemeToggle.tsx          # 主题切换
@@ -537,6 +600,18 @@ src/
 │   ├── pageNav.ts               # 页码定位（纯函数）
 │   ├── interaction.ts           # 缩放 / 旋转 / 键盘（纯函数）
 │   ├── loadProgress.ts          # 加载进度格式化（纯函数）
+│   ├── pdfDate.ts               # PDF 日期解析 / 格式化（纯函数）
+│   ├── relativeTime.ts          # 相对时间（Intl.RelativeTimeFormat，纯函数）
+│   ├── pageSize.ts              # 页面尺寸格式化（pt/mm 双单位）+ A3/A4/A5/PA5/B4/B5/Letter/Legal 识别 + 分组（纯函数）
+│   ├── pdfMeta.ts               # 元数据体积测量 + 线性化检测（纯函数，供 Worker 与 Hook 调用）
+│   ├── pdfMeta.worker.ts        # 元数据测量 Worker 入口
+│   ├── pdfMetaClient.ts         # Worker 封装 + 主线程回退
+│   ├── pdfFonts.ts              # 字体名提取（纯函数）
+│   ├── usePageSizes.ts          # 页面尺寸 / 计算所有页（Hook）
+│   ├── usePerPageSize.ts        # 平均每页占用（Hook）
+│   ├── useLinearized.ts         # 线性化 / Fast Web View 检测（Hook）
+│   ├── usePdfFonts.ts           # 字体列表（Hook）
+│   ├── propertyExport.ts        # INI 序列化 + 剪贴板复制
 │   ├── annotation.ts            # 注解层接入 + 存储 + 链接解析
 │   ├── useFocusTrap.ts          # 焦点陷阱
 │   └── __tests__/               # 纯函数测试

@@ -210,6 +210,7 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   const [totalHeight, setTotalHeight] = useState(0)
   const [hasOverflow, setHasOverflow] = useState(false)
   const [fileName, setFileName] = useState<string>('')
+  const [file, setFile] = useState<File | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   // 页码导航输入框：聚焦编辑时不同步 currentPage，失焦/回车后再对齐
   const [pageInput, setPageInput] = useState('1')
@@ -246,6 +247,7 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
       pageInputEditingRef.current = false
       setAnnotationStorage(null)
       setFileName(file.name)
+      setFile(file)
       setRotation(0)
       setLoadProgress({ loaded: 0, total: 0 })
 
@@ -275,6 +277,8 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
           cMapPacked: true,
           ...PDFJS_ASSETS,
           useWasm: true,
+          // 开启字体额外属性，让 commonObjs 导出字体真实名（BaseFont），供属性面板显示与子集判断
+          fontExtraProperties: true,
         })
         // 加密 PDF：onPassword 是 loadingTask 上的回调，不是 getDocument 的参数
         loadingTask.onPassword = (updatePassword: (password: string) => void, reason: number) => {
@@ -724,7 +728,14 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
               </button>
             </Tooltip>
           )}
-          <PropBtn pdfDoc={pdfDoc} pages={pages} scale={scale} fileName={fileName} />
+          <PropBtn
+            pdfDoc={pdfDoc}
+            pages={pages}
+            fileName={fileName}
+            currentPage={currentPage}
+            numPages={numPages}
+            file={file}
+          />
         </div>
       </div>
 

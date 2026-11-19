@@ -24,9 +24,12 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  width: 90%;
-  max-width: 480px;
-  max-height: 80vh;
+  /* #app 是 text-align: center，弹窗内统一左对齐 */
+  text-align: left;
+  width: 92%;
+  max-width: 640px;
+  /* 稍高的上限；用 px 兜底，避免 4K 屏上 90vh 过高 */
+  max-height: min(90vh, 1000px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -49,19 +52,32 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-tertiary) 16%, transparent);
 }
 
 .modal-header h2 {
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
+/* 标题前的强调竖条 */
+.modal-header h2::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
 .modal-close {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: transparent;
   border: none;
   border-radius: var(--radius-md);
@@ -79,7 +95,7 @@
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
 }
 
@@ -95,52 +111,130 @@
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
+/* 每组属性是一张独立卡片；overflow 保持可见，
+   键名 Tooltip 需要向上弹出并覆盖相邻行，不能被裁剪 */
 .properties-list {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+/* 行自己裁圆角，替代 overflow: hidden */
+.properties-list > .property-row:first-child {
+  border-top-left-radius: calc(var(--radius-md) - 1px);
+  border-top-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.properties-list > .property-row:last-child {
+  border-bottom-left-radius: calc(var(--radius-md) - 1px);
+  border-bottom-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.properties-list > .property-row:only-child {
+  border-radius: calc(var(--radius-md) - 1px);
 }
 
 .property-row {
-  display: contents;
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  padding: 11px 16px;
+  transition: background var(--transition);
+}
+
+.property-row + .property-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.property-row:hover {
+  background: color-mix(in srgb, var(--bg-tertiary) 28%, transparent);
 }
 
 .properties-list dt {
-  font-size: 13px;
+  flex: 0 0 140px;
+  font-size: 14px;
   color: var(--text-secondary);
   text-align: right;
 }
 
 .properties-list dd {
-  font-size: 13px;
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--text-primary);
-  font-family: monospace;
-  word-break: break-all;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  word-break: break-word;
 }
 
 .properties-list dd.unknown {
   color: var(--text-muted);
-  font-style: italic;
   font-family: inherit;
+}
+
+/* 时间值：提示可 hover 查看相对时间 */
+.time-value {
+  border-bottom: 1px dotted var(--text-muted);
+  cursor: help;
+}
+
+/* 平均每页占用的行内加载骨架：只在计算时出现，不影响其他属性行 */
+.loading-inline {
+  display: inline-block;
+  width: 64px;
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--border-color) 25%,
+    var(--bg-tertiary) 37%,
+    var(--border-color) 63%
+  );
+  background-size: 400% 100%;
+  animation: loading-shimmer 1.4s ease infinite;
+  vertical-align: middle;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-inline {
+    animation: none;
+  }
 }
 
 .modal-footer {
   display: flex;
-  justify-content: flex-end;
-  padding: 16px 20px;
+  justify-content: space-between;
+  padding: 16px 24px;
   border-top: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-tertiary) 16%, transparent);
   gap: 12px;
 }
 
+/* 只有一个按钮时靠右（如字体列表 / 尺寸明细弹窗） */
+.modal-footer--end {
+  justify-content: flex-end;
+}
+
 .btn {
-  padding: 8px 16px;
+  padding: 9px 20px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
@@ -152,6 +246,28 @@
   color: white;
 }
 
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* 复制失败态：用错误色描边/文字提示 */
+.btn-secondary.is-error {
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+
+.btn-secondary.is-error:hover {
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+  color: var(--error-text);
+}
+
 .btn-primary:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
@@ -161,8 +277,168 @@
   transform: translateY(0);
 }
 
-@media (max-width: 768px) {
-  .properties-list {
-    grid-template-columns: 100px 1fr;
+/* 尺寸明细弹窗：窄一点 */
+.modal-content--small {
+  max-width: 480px;
+}
+
+/* 「当前页尺寸」值 + 右侧「计算所有页」按钮 */
+.page-size-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+/* 属性键名的提示触发器：提示可 hover 查看说明 */
+.label-tip {
+  border-bottom: 1px dotted var(--text-muted);
+  cursor: help;
+  outline-offset: 2px;
+}
+
+/* 字体列表弹窗 */
+.font-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.font-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.font-list__name {
+  word-break: break-word;
+}
+
+/* 嵌入字体标签 */
+.font-tag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 子集字体标签 */
+.font-tag--subset {
+  background: color-mix(in srgb, var(--text-secondary) 15%, transparent);
+  color: var(--text-secondary);
+}
+
+.btn-link {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+
+.btn-link:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.btn-link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* 尺寸明细列表 */
+.page-size-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-size-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+}
+
+.page-size-list__value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+.page-size-list__page {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 4K / 超大屏：适度放宽宽度与高度上限，避免窗口在大屏上显得过小 */
+@media (min-width: 2200px) {
+  .modal-content {
+    max-width: 720px;
+    max-height: min(88vh, 1100px);
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-header {
+    padding: 16px 18px;
+  }
+  .modal-header h2 {
+    font-size: 16px;
+  }
+  .modal-body {
+    padding: 18px;
+  }
+  .modal-footer {
+    padding: 14px 18px;
+  }
+  .property-row {
+    gap: 14px;
+    padding: 10px 14px;
+  }
+  .properties-list dt {
+    flex-basis: 96px;
+    font-size: 13px;
+  }
+  .properties-list dd {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-content,
+  .btn,
+  .modal-close,
+  .property-row {
+    animation: none;
+    transition: none;
   }
 }

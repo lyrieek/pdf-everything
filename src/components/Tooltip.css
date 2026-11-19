@@ -30,6 +30,15 @@
     visibility 0.15s;
 }
 
+/* 长文本提示：换行显示并限制宽度，避免撑破模态框 */
+.tooltip--wrap::after {
+  white-space: normal;
+  width: max-content;
+  max-width: 260px;
+  line-height: 1.6;
+  text-align: start;
+}
+
 /* 贴边对齐：提示向内侧展开，避免溢出容器产生滚动条 */
 .tooltip--align-start::after {
   left: 0;

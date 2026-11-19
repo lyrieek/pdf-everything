@@ -27,6 +27,13 @@ pnpm test
 | `src/lib/__tests__/loadProgress.test.ts` | `formatBytes` / `formatLoadProgress`（字节进位、百分比、流式降级） |
 | `src/lib/__tests__/annotation.test.ts` | `createAnnotationStorage`（含 formattedValue 镜像）、`createDestResolver`（数字/对象引用/命名目标）、`createLinkService`（hash/外链属性/跳转） |
 | `src/lib/__tests__/useFocusTrap.test.tsx` | 焦点陷阱：初始焦点、Tab 循环、Escape 关闭、焦点还原 |
+| `src/components/__tests__/TimeValue.test.tsx` | 时间值：显示绝对时间 + tooltip 相对时间 |
+| `src/lib/__tests__/pdfDate.test.ts` | PDF 日期：`parsePdfDate` / `formatDate` / `formatPdfDate`（合法、非 PDF 格式、越界） |
+| `src/lib/__tests__/relativeTime.test.ts` | 相对时间：过去 / 未来 / 此刻、中英文 |
+| `src/lib/__tests__/pageSize.test.ts` | 页面尺寸 pt/mm 双单位格式化 + A3/A4/A5/PA5/B4/B5/Letter/Legal 识别（含横向）+ `groupPageSizes` 分组与 10 种上限 |
+| `src/lib/__tests__/pdfMeta.test.ts` | 元数据体积：Info + Metadata、无引用、对象流、空 buffer、不误匹配 `N1`；线性化：命中 / 未命中 / 空 buffer |
+| `src/lib/__tests__/pdfFonts.test.ts` | `collectFonts`：从 setFont 收集字体、去重、标记嵌入、忽略非 setFont / 未解析 / 非字符串引用 |
+| `src/lib/__tests__/propertyExport.test.ts` | INI 序列化（分组 / 空值 / 换行清洗 / 键名随语言）+ 剪贴板复制成功 / 失败 |
 
 ### 新增测试（newFeatures.test.tsx）覆盖点
 
@@ -288,12 +295,34 @@ node scripts/mock_pdf.mjs --list
 > **另注意**：pdf.js 的 `useSystemFonts` 默认 `true`，本机有 Helvetica 时可能根本不 fetch
 > `standard_fonts/`。要强制验证该资源路径，需在应用侧设 `useSystemFonts: false`。
 
+#### 属性面板
+
+| 场景 | 预期结果 |
+|------|----------|
+| 点击工具栏属性按钮 | 打开属性弹窗，显示文件名 / 版本号 / 作者 / 主题 / 创建工具 / 生成工具 / 创建 / 修改时间 / 页面尺寸 / 页数 / 平均每页占用 / 线性化 |
+| 版本号 | 显示 PDF 详细版本（如 `1.7`，来自 `PDFFormatVersion`） |
+| 修改时间缺失（含创建 / 修改都缺失）或与创建时间相同 | 不显示「修改时间」行（渲染与 INI 都不含） |
+| hover 时间值 | 显示相对时间（如「3 天前」），每 30s 自动刷新 |
+| 页面尺寸（标准） | 显示如 `595 × 842 pt (A4)`；识别 A3/A4/A5/PA5/B4/B5/Letter/Legal（含横向） |
+| 页面尺寸（非标准） | 双单位显示，如 `800 × 1000 pt（约 282 × 353 mm）` |
+| 点击「计算所有页」 | 全部一致 → 标签变「所有页尺寸」；不一致 → 弹出明细窗口（最多 10 种，pt+mm，每种一个代表页） |
+| 字体 | 行内最多显示 3 个（逗号分隔）；超过 3 个出现「更多字体」按钮 |
+| 点击「更多字体」 | 弹出字体列表（最多 50 种，标题显示数量）；嵌入字体带「嵌入」标签 |
+| 线性化 / Fast Web View | 线性化 PDF 显示「是」，普通 PDF 显示「否」；键名 hover 显示说明 tooltip |
+| 平均每页占用 | 打开时该行先显示骨架，随后显示如 `482 KB`；其他属性行不受影响；键名 hover 显示计算口径 tooltip |
+| 点击「复制」 | 剪贴板为 INI 文本，键名随当前语言；按钮短暂显示「已复制」 |
+| 复制失败（剪贴板被禁用等） | 按钮显示「复制失败」（错误色），约 2s 后恢复 |
+| 窗口尺寸 | 平板竖屏 / 横屏、4K 大屏下弹窗完整可见；内容多时主体内部滚动，头尾固定 |
+
+> 元数据体积走 Web Worker（`pdfMeta.worker.ts`），打开窗口时才计算；超大文件（>128MB）
+> 跳过精确解析、按 `文件大小 / 页数` 估算。可临时把 `MAX_PRECISE_METADATA_BYTES` 调小来观察骨架态。
+
 #### 焦点管理（模态框）
 
 | 场景 | 预期结果 |
 |------|----------|
 | 点击属性按钮 | 焦点落在模态框内第一个可聚焦元素（关闭按钮） |
-| 连续按 Tab | 焦点只在「关闭 / 确定」之间循环，不会跑到背景页 |
+| 连续按 Tab | 焦点只在弹窗内按钮（计算所有页 / 复制 / 关闭）之间循环，不会跑到背景页 |
 | Shift+Tab | 反向循环，同样不出模态框 |
 | 按 Escape | 模态框关闭，焦点回到「PDF 属性」按钮 |
 | 点击遮罩空白处 | 模态框关闭，焦点同样回到「PDF 属性」按钮 |
@@ -302,7 +331,7 @@ node scripts/mock_pdf.mjs --list
 
 ## 三、验收清单
 
-- [ ] `pnpm test` 全部通过（106 个测试）
+- [ ] `pnpm test` 全部通过（163 个测试）
 - [ ] `pnpm lint`（oxfmt + tsc）通过
 - [ ] `pnpm build` 成功，`dist/pdfjs/{cmaps,standard_fonts,wasm,iccs,images}/` 存在
 - [ ] 资源基址以 `/` 结尾、同源（DevTools Network 确认按需 fetch）
@@ -316,6 +345,7 @@ node scripts/mock_pdf.mjs --list
 - [ ] 链接可点、表单可填且值在缩放后保留
 - [ ] 中英文 i18n 正常
 - [ ] 双页居中正确（混合页面尺寸下普通页 2-up 居中、超宽页不破坏居中）
+- [ ] 属性面板：元数据、日期 / 相对时间、页面尺寸、平均每页占用、线性化检测、INI 复制正常
 
 ---
 
