@@ -137,6 +137,22 @@ const PDFJS_ASSETS = {
 
 `loadId` 机制解决的是「快速连续换文件时旧请求后返回，把状态写脏」的问题。
 
+### 2.5 加载进度
+
+加载分两个阶段，共用同一套进度状态（`loadProgress`），但**交互强度不同**：
+
+| 阶段 | 何时 | UI | 是否阻塞阅读区 |
+| --- | --- | --- | --- |
+| 下载文档 | `loadingTask.promise` 未 resolve（`pdfDoc == null`） | 居中遮罩 `.loading`：文案 + `formatLoadProgress(loaded, total)` | 是（此时无页面可看） |
+| 分批取页 | `pdfDoc` 已就绪、页面代理还在批量 `getPage` | 右下角非阻塞角标 `.load-badge`：`已加载页 / 总页数` | **否**（`pointer-events: none`） |
+
+- **下载阶段**：`loadingTask.onProgress = ({ loaded, total }) => ...`。`total > 0` 显示百分比（上限 100%）；`total === 0`（流式，未知大小）降级为 `formatBytes(loaded)`。回调里用 `loadId` 比对，丢弃换文件后的过期更新。
+- **分批取页阶段**：进度直接由 `pages.length / numPages` 推导，不额外存状态。
+
+> 关键：第二阶段用 `pointer-events: none` 的浮层而非全屏遮罩，因此**不会挡住阅读区、也不会阻断 `IntersectionObserver` 懒加载**——用户可以在后台批量取页时立即滚动、阅读、触发懒渲染。第一阶段的遮罩只在 `pdfDoc == null` 时出现，那时本就没有页面可渲染。
+
+`formatBytes` / `formatLoadProgress` 是 `src/lib/loadProgress.ts` 的纯函数，便于单测。
+
 ---
 
 ## 3. 页面加载策略
@@ -243,6 +259,15 @@ return () => {
 
 `--total-scale-factor` / `--scale-factor` 由 `PDFPage` 在 effect 里写入宿主元素，
 文本层与注解层同时继承。
+
+### 4.5 旋转
+
+- `rotation: 0 | 90 | 180 | 270`（`Rotation` 类型），工具栏左转 / 右转按钮经 `rotateBy(rotation, ±90)` 归一化。
+- **所有 viewport 计算统一带 rotation**：`page.getViewport({ scale, rotation })`。`PDFPage` 的 effect 依赖含 `rotation`，canvas 尺寸、文本层、注解层因此**共用同一旋转后的 viewport，自动跟随**，无需各自处理。
+- 旋转 90°/270° 时 `getViewport` 返回的宽高互换，`.pdf-page-wrapper` 的宽度与占位块 `aspectRatio` 都取自旋转后的 `viewport.width/height`，布局随之翻转。
+- 换文件时 `rotation` 重置为 0。
+- **旋转后重新定位到当前页**：旋转会改变页面尺寸与内容高度，若不动 `scrollTop` 视口会漂移到别的位置。`PdfViewer` 用 `useLayoutEffect([rotation])` 在绘制前调用 `goToPage(currentPage)`，把当前页重新对齐到顶部（`useLayoutEffect` 保证无闪烁）。**≤ 2 页时跳过**（几乎不漂移，无必要）。
+- 页码定位不受影响：各页 `offsetTop` 始终来自真实布局，`pageAtScrollTop` 反推当前页依旧准确。
 
 ---
 
@@ -387,9 +412,28 @@ if (typeof patch.value === 'string' && patch.formattedValue === undefined) {
 `layoutMode: 'single' | 'double'`：
 
 - 单页：纵向单列
-- 双页：`.pdf-pages--double` 使用 `grid-template-columns: repeat(2, max-content)`，居中排列
+- 双页：`.pdf-pages--double` 使用 CSS Grid，**列宽固定为「多数页宽」**（运行时不内联 `grid-template-columns: repeat(2, <多数页宽*scale>px)`），`justify-content: center` 居中，`justify-items: center` 让页在列内居中。
 
 总页数 < 2 时禁用切换。
+
+### 7.6 双页模式下的超大页
+
+同一文档里偶有比多数页大很多的页（如年鉴的折页 / 横版插页，本仓库实测样本 879×1191 vs 多数 652×850）。
+
+**判定**：以「多数页宽度」（`computeReferenceWidth` 取众数）为基准，`isOversizePage` 判断某页宽度偏离基准是否 **> 10%**。
+
+**处理**（仅双页模式）：
+
+| 方面 | 做法 |
+| --- | --- |
+| 独占一行 | 超大页加 `.is-oversize` → `grid-column: 1 / -1` 跨两列，不与普通页同行 |
+| 保持大小 | 默认按原始尺寸渲染（不缩放） |
+| 最大宽度 | 不超过「两页宽」`oversizeMaxWidth = 2*多数页宽 + 间距`；超出则等比缩小（per-page `renderScale`） |
+| 稍作突出 | 强调色描边 + 左上角强调色徽标（`ExpandIcon`，`title` 走 i18n `page.oversize`） |
+
+**为什么不用 `repeat(2, max-content)`**：那会把**列宽撑到该列最宽的一页**，导致所有普通页在超宽列里左对齐、居中失效。固定列宽 + 超大页跨列可避免。
+
+**取舍**：超大页跨两列会让它**前一张**普通页暂时落单（右侧留空）——这是 Grid 自动排布的必然结果；未启用 `grid-auto-flow: dense`，因为 dense 会打乱阅读顺序（回填后面的页到前面空位）。基准宽度用 `useMemo` 缓存（依赖 `pages`/`rotation`），避免滚动时重复 `getViewport`。
 
 ---
 
@@ -456,10 +500,14 @@ Escape 由同一钩子处理，关闭后同样还原焦点。
 | 滚轮缩放步长 | 0.1 | `interaction.ts` |
 | 方向键滚动 | 80px | `interaction.ts` |
 | PageUp/Down 比例 | 0.9 视口 | `interaction.ts` |
+| 旋转档位 | 0 / 90 / 180 / 270 | `interaction.ts`（`rotateBy`） |
 | 虚拟滑块最小高度 | 96px | `pdfLayout.ts` |
+| 超大页判定阈值 | 10% | `pdfLayout.ts`（`OVERSIZE_RATIO`） |
+| 超大页最大宽度 | 2×多数页宽 + 间距 | `pdfLayout.ts`（`oversizeMaxWidth`） |
 | 懒加载阈值 | 10 页 | `PdfViewer.tsx` |
 | 懒加载预加载边距 | 200px | `LazyPDFPage.tsx` |
 | 分批取页大小 | 24 页 | `pdfLoading.ts` |
+| 加载进度格式化 | `formatBytes` / `formatLoadProgress` | `loadProgress.ts` |
 | 注解图标路径 | `${BASE_URL}pdfjs/images/` | `annotation.ts` |
 
 ---
@@ -484,10 +532,11 @@ src/
 │   ├── ThumbnailSidebar.tsx     # 缩略图侧栏（仅类型骨架，未启用）
 │   └── __tests__/               # 组件测试
 ├── lib/
-│   ├── pdfLayout.ts             # 滑块几何 / 滚动夹紧（纯函数）
+│   ├── pdfLayout.ts             # 滑块几何 / 滚动夹紧 / 超大页判定（纯函数）
 │   ├── pdfLoading.ts            # 分批取页（纯函数）
 │   ├── pageNav.ts               # 页码定位（纯函数）
-│   ├── interaction.ts           # 缩放 / 键盘（纯函数）
+│   ├── interaction.ts           # 缩放 / 旋转 / 键盘（纯函数）
+│   ├── loadProgress.ts          # 加载进度格式化（纯函数）
 │   ├── annotation.ts            # 注解层接入 + 存储 + 链接解析
 │   ├── useFocusTrap.ts          # 焦点陷阱
 │   └── __tests__/               # 纯函数测试

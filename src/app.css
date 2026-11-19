@@ -165,12 +165,6 @@ body {
   transform: translateY(0);
 }
 
-.page-info {
-  font-size: 13px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 /* 页码导航 */
 .page-nav {
   display: flex;
@@ -205,12 +199,30 @@ body {
   cursor: not-allowed;
 }
 
-.page-nav-current {
+.page-nav-input {
+  width: 42px;
+  height: 28px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 0 4px;
+  outline: none;
+  transition: all var(--transition);
+}
+
+.page-nav-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--input-focus);
+}
+
+.page-nav-total {
   font-size: 12px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  min-width: 40px;
-  text-align: center;
   white-space: nowrap;
 }
 
@@ -403,12 +415,54 @@ body {
 }
 
 .pdf-error {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 12px 16px;
   background: var(--error-bg);
   color: var(--error-text);
   border-bottom: 1px solid var(--error-text);
   font-size: 14px;
   animation: slideDown 0.2s ease;
+}
+
+.pdf-error-close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--error-text);
+  opacity: 0.6;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition:
+    opacity var(--transition),
+    background var(--transition);
+  padding: 0;
+  line-height: 1;
+}
+
+.pdf-error-close:hover {
+  opacity: 1;
+  background: var(--bg-tertiary);
+  transform: translateY(-50%);
+}
+
+.pdf-error-close:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.pdf-error-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 @keyframes slideDown {
@@ -473,9 +527,11 @@ body {
 .loading {
   position: absolute;
   inset: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   background: var(--loading-bg);
   font-size: 16px;
   color: var(--text-secondary);
@@ -483,13 +539,53 @@ body {
 
 .loading::after {
   content: '';
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
   border: 2px solid var(--border-color);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-  margin-left: 12px;
+}
+
+.loading-value {
+  min-width: 3ch;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 页面代理分批加载阶段的非阻塞进度条（不覆盖阅读区，不影响懒加载） */
+.load-badge {
+  position: absolute;
+  /* 让徽章落在阅读区右下角、避开右侧虚拟滚动条（minimap） */
+  right: calc(clamp(120px, 10vw, 160px) + 16px);
+  bottom: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  /* 关键：不拦截指针事件，避免遮挡阅读区与滚动，从而不影响懒加载 */
+  pointer-events: none;
+  animation: slideDown 0.2s ease;
+}
+
+.load-badge__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -509,11 +605,13 @@ body {
   padding: 24px 0;
 }
 
-/* 双页视图：两列网格，内容超出时保持可横向滚动且左侧不被裁剪 */
+/* 双页视图：两列网格（列宽运行时按「多数页宽」内联覆盖） */
 .pdf-pages--double {
   display: grid;
+  /* 回退值；有基准宽度时会被内联 grid-template-columns 覆盖 */
   grid-template-columns: repeat(2, max-content);
   justify-content: center;
+  justify-items: center;
   align-items: start;
   gap: 28px 16px;
   width: max-content;
@@ -523,6 +621,32 @@ body {
 
 .pdf-pages--double .pdf-page-wrapper {
   margin-bottom: 0;
+}
+
+/* 超大页：跨两列独占一行，用强调色描边稍作突出，但不喧宾夺主 */
+.pdf-pages--double .pdf-page-wrapper.is-oversize {
+  grid-column: 1 / -1;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    var(--shadow-lg);
+}
+
+/* 超大页角标 */
+.oversize-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
 }
 
 .pdf-page-wrapper {

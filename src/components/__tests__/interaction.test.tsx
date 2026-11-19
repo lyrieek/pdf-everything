@@ -9,6 +9,7 @@ import {
   PAGE_SCROLL_RATIO,
   clampScale,
   isEditableTarget,
+  rotateBy,
   scrollStepForKey,
   stepZoom,
   wheelZoomScale,
@@ -97,6 +98,15 @@ describe('interaction helpers', () => {
     expect(isEditableTarget(document.createElement('textarea'))).toBe(true)
     expect(isEditableTarget(document.createElement('div'))).toBe(false)
     expect(isEditableTarget(null)).toBe(false)
+  })
+
+  it('rotateBy 顺时针 / 逆时针旋转 90° 并归一化', () => {
+    expect(rotateBy(0, 90)).toBe(90)
+    expect(rotateBy(90, 90)).toBe(180)
+    expect(rotateBy(180, 90)).toBe(270)
+    expect(rotateBy(270, 90)).toBe(0)
+    expect(rotateBy(0, -90)).toBe(270)
+    expect(rotateBy(270, -90)).toBe(180)
   })
 })
 

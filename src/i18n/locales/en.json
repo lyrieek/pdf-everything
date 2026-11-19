@@ -8,13 +8,18 @@
     "themeToggle": "Toggle theme",
     "properties": "PDF properties",
     "singlePage": "Single page",
-    "doublePage": "Double page"
+    "doublePage": "Double page",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right"
   },
   "dropZone": {
     "title": "Drag and drop a PDF file here",
     "hint": "or click to select"
   },
   "loading": "Loading PDF...",
+  "loadingProgress": {
+    "pages": "Loading pages {{loaded}} / {{total}}"
+  },
   "error": {
     "failedToLoad": "Failed to load PDF",
     "invalidFile": "Please drop a PDF file",
@@ -25,6 +30,9 @@
   "pageInfo": {
     "pages": "{{count}} page",
     "pages_plural": "{{count}} pages"
+  },
+  "page": {
+    "oversize": "Oversized page"
   },
   "modal": {
     "title": "PDF Properties",
@@ -51,6 +59,9 @@
     "properties": "PDF properties",
     "closeModal": "Close",
     "pageLayout": "Page layout",
-    "language": "Language"
+    "currentPage": "Current page",
+    "language": "Language",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right"
   }
 }

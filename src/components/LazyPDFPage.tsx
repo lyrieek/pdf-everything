@@ -11,6 +11,8 @@ interface LazyPDFPageProps {
   pdfDoc?: pdfjsLib.PDFDocumentProxy | null
   /** 缩放比例 */
   scale: number
+  /** 旋转角度（顺时针，0/90/180/270） */
+  rotation?: number
   /** 内部链接（#page=N）跳转回调 */
   onGotoPage?: (pageNumber: number) => void
   /** 跨页面共享的注解存储 */
@@ -22,6 +24,7 @@ export function LazyPDFPage({
   page,
   pdfDoc,
   scale,
+  rotation = 0,
   onGotoPage,
   annotationStorage,
 }: LazyPDFPageProps) {
@@ -55,6 +58,7 @@ export function LazyPDFPage({
           page={page}
           pdfDoc={pdfDoc}
           scale={scale}
+          rotation={rotation}
           onGotoPage={onGotoPage}
           annotationStorage={annotationStorage}
         />

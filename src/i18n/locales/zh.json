@@ -8,13 +8,18 @@
     "themeToggle": "切换主题",
     "properties": "PDF 属性",
     "singlePage": "单页",
-    "doublePage": "双页"
+    "doublePage": "双页",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转"
   },
   "dropZone": {
     "title": "将 PDF 文件拖拽到此处",
     "hint": "或点击选择文件"
   },
   "loading": "正在加载 PDF...",
+  "loadingProgress": {
+    "pages": "正在加载页面 {{loaded}} / {{total}}"
+  },
   "error": {
     "failedToLoad": "加载 PDF 失败",
     "invalidFile": "请拖拽 PDF 文件",
@@ -24,6 +29,9 @@
   },
   "pageInfo": {
     "pages": "{{count}} 页"
+  },
+  "page": {
+    "oversize": "超大页面"
   },
   "modal": {
     "title": "PDF 属性",
@@ -50,6 +58,9 @@
     "properties": "PDF 属性",
     "closeModal": "关闭",
     "pageLayout": "页面布局",
-    "language": "语言"
+    "currentPage": "当前页码",
+    "language": "语言",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转"
   }
 }

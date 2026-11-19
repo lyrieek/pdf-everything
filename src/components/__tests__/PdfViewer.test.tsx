@@ -4,7 +4,14 @@ import { PdfViewer } from '../PdfViewer'
 import { ThemeToggle } from '../ThemeToggle'
 import { PropBtn } from '../PropBtn'
 import { VirtualScrollbar } from '../VirtualScrollbar'
-import { computeThumbMetrics, computeContentHeight, clampScrollTop } from '../../lib/pdfLayout'
+import {
+  computeThumbMetrics,
+  computeContentHeight,
+  clampScrollTop,
+  computeReferenceWidth,
+  isOversizePage,
+  oversizeMaxWidth,
+} from '../../lib/pdfLayout'
 
 // Mock pdfjs-dist：构造一个 5 页、每页 800x1000 的假文档
 vi.mock('pdfjs-dist', () => {
@@ -119,6 +126,30 @@ describe('pdfLayout helpers', () => {
     expect(top.thumbTop).toBe(0)
     expect(mid.thumbTop).toBeCloseTo(0.5 * (800 - top.thumbHeight))
     expect(bottom.thumbTop).toBeCloseTo(800 - top.thumbHeight)
+  })
+})
+
+describe('pdfLayout 超大页 helpers', () => {
+  it('computeReferenceWidth 取众数，空数组为 0，并列取先出现者', () => {
+    expect(computeReferenceWidth([])).toBe(0)
+    expect(computeReferenceWidth([652, 652, 879, 652])).toBe(652)
+    // 并列（各 2 次）取先出现者
+    expect(computeReferenceWidth([879, 652, 879, 652])).toBe(879)
+    // 单数页
+    expect(computeReferenceWidth([1000])).toBe(1000)
+  })
+
+  it('isOversizePage 与多数页宽相差 > 10% 即为超大页', () => {
+    expect(isOversizePage(879, 652)).toBe(true) // +34.8%
+    expect(isOversizePage(700, 652)).toBe(false) // +7.4%，未超阈值
+    expect(isOversizePage(652, 652)).toBe(false)
+    // 无基准时不判超大
+    expect(isOversizePage(879, 0)).toBe(false)
+  })
+
+  it('oversizeMaxWidth 为两页宽 + 间距', () => {
+    expect(oversizeMaxWidth(652)).toBe(652 * 2 + 16)
+    expect(oversizeMaxWidth(800)).toBe(800 * 2 + 16)
   })
 })
 

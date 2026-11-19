@@ -10,6 +10,8 @@ interface PDFPageProps {
   pdfDoc?: pdfjsLib.PDFDocumentProxy | null
   /** 缩放比例 */
   scale: number
+  /** 旋转角度（顺时针，0/90/180/270） */
+  rotation?: number
   /** 渲染错误回调 */
   onRenderError?: (error: Error) => void
   /** 内部链接（#page=N）跳转回调 */
@@ -39,6 +41,7 @@ export function PDFPage({
   page,
   pdfDoc,
   scale,
+  rotation = 0,
   onRenderError,
   onGotoPage,
   annotationStorage,
@@ -57,7 +60,7 @@ export function PDFPage({
     if (!context) return
 
     const dpr = window.devicePixelRatio || 1
-    const viewport = page.getViewport({ scale })
+    const viewport = page.getViewport({ scale, rotation })
 
     // backing store 按 DPR 放大，CSS 尺寸保持逻辑像素
     canvas.width = Math.floor(viewport.width * dpr)
@@ -140,7 +143,7 @@ export function PDFPage({
       }
       annotationLayer?.destroy()
     }
-  }, [page, pdfDoc, scale, onRenderError, onGotoPage, annotationStorage])
+  }, [page, pdfDoc, scale, rotation, onRenderError, onGotoPage, annotationStorage])
 
   return (
     <div ref={hostRef} className="pdf-page-canvas">

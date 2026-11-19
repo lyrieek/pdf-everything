@@ -20,8 +20,11 @@ pnpm test
 | `src/components/__tests__/interaction.test.tsx` | interaction 纯函数（clampScale/stepZoom/wheelZoomScale/scrollStepForKey/isEditableTarget）、键盘导航、Ctrl+滚轮缩放 |
 | `src/components/__tests__/Slider.test.tsx` | Slider 组件渲染/点击/方向键/禁用 |
 | `src/components/__tests__/newFeatures.test.tsx` | 新增 P1/P2 功能（见下） |
+| `src/components/__tests__/viewFeatures.test.tsx` | 旋转（90°/270° 宽高互换、按钮联动）、加载进度（百分比 / 流式降级 / 加载遮罩） |
+| `src/components/__tests__/oversize.test.tsx` | 双页超大页：`is-oversize` 类、徽标、两页宽上限、`grid-template-columns` |
 | `src/components/__tests__/textSelection.test.tsx` | 文本选中：`::selection` 使用半透明 `--selection-bg`（非不透明 `--accent`，防「整片死红」回归）、`--selection-bg` 为 rgba 且 alpha<1、跨多个 span 选中时 `getSelection().toString()` 拼接正确 |
 | `src/lib/__tests__/pdfLoading.test.ts` | `pageBatches` 分批切页（每批大小、边界、空区间） |
+| `src/lib/__tests__/loadProgress.test.ts` | `formatBytes` / `formatLoadProgress`（字节进位、百分比、流式降级） |
 | `src/lib/__tests__/annotation.test.ts` | `createAnnotationStorage`（含 formattedValue 镜像）、`createDestResolver`（数字/对象引用/命名目标）、`createLinkService`（hash/外链属性/跳转） |
 | `src/lib/__tests__/useFocusTrap.test.tsx` | 焦点陷阱：初始焦点、Tab 循环、Escape 关闭、焦点还原 |
 
@@ -77,6 +80,22 @@ dist/pdfjs/images/         ← 注解图标 annotation-*.svg
 
 > 判断是否为 SPA 兜底页：响应体只有约 463 字节且 `content-type: text/html` 即为兜底，
 > 说明资源被剔除了（这是精简构建的预期行为，不是错误）。
+
+---
+
+### 用 browse MCP 半自动验证（特定文件）
+
+需要**真实浏览器 + 特定本地文件**（尤其是大文件）时，固定走这套流程：
+
+1. **AI 准备环境**：启动 dev server（`pnpm dev`），用 browse MCP 打开 `http://localhost:<port>/`，确认页面加载。
+2. **开发人员手动加载文件**：把目标文件**拖到阅读区**（或点「选择 PDF」）。
+3. **AI 继续自动验证**：文件加载后，AI 用 browse 读取 DOM 几何 / 计算样式来核对布局、对齐、懒加载、加载进度等。
+
+> **为什么手动拖**：browse 通过上传注入文件有 **50 MB 上限**，且文件必须在 browse 允许的根目录（临时目录）内。
+> 真实大文件 / 任意路径的文件请手动拖入，**不要尝试让 AI 上传**。
+>
+> **经验**：判断「居中 / 对齐」是否正确，用 `getBoundingClientRect()` 测各元素 `left/right/width` 并算间距，
+> 比截图更可靠（顺带照顾到了一些看不了图片的小模型）。
 
 ---
 
@@ -154,6 +173,40 @@ dist/pdfjs/images/         ← 注解图标 annotation-*.svg
 | 第 1 页时 | 「上一页」按钮禁用 |
 | 最后一页时 | 「下一页」按钮禁用 |
 | 滚动后 | 页码指示器自动更新 |
+
+#### 旋转
+
+| 场景 | 预期结果 |
+|------|----------|
+| 点击左转 / 右转 | 页面内容旋转 90°，文本层 / 表单 / 链接仍对齐（共用旋转后 viewport） |
+| 旋转 90°/270° | canvas 宽高互换，`.pdf-page-wrapper` 宽度与占位块比例随之翻转 |
+| **旋转后当前页不漂移** | 在第 N 页（滚动到该页顶部附近）点击旋转，旋转后仍定位回第 N 页顶部（`scrollTop ≈ 第N页.offsetTop`），页码指示不变 |
+| ≤ 2 页文档 | 旋转不触发重定位（豁免，避免无谓滚动） |
+| 换文件 | 旋转角度重置为 0° |
+
+> 重定位实现：`useLayoutEffect([rotation])` → `goToPage(currentPage)`，绘制前完成、无闪烁。
+> 测量：旋转前后取当前页 wrapper 的 `offsetTop` 与容器 `scrollTop`，断言二者相等（drift ≈ 0）。
+
+#### 双页居中与超大页（混合页面尺寸）
+
+| 场景 | 预期结果 |
+|------|----------|
+| 打开含**超大页**（比多数页宽 > 10%）的 PDF，切到双页 | 普通页两页并排、间距 16px、整体水平居中 |
+| 超大页（如 879×1191，多数页 652×850） | **独占一行**、水平居中、左上角有强调色徽标、带强调色描边；不被Paired with 普通页 |
+| 超大页宽度上限 | 最多占「两页宽」（`2*多数页宽 + 间距`），超出则等比缩小，不会把整体撑宽 |
+| 双页 100% 缩放下的边距 | 普通行左右边距基本相等；`container.scrollWidth === clientWidth`（无横向溢出） |
+| 单页模式 | 每页在**阅读区内**水平居中（右侧 minimap 会让阅读区整体偏左，属预期） |
+
+> **回归背景**：曾用 `grid-template-columns: repeat(2, max-content)`，列宽会被**最宽的一页**撑大，
+> 导致所有普通页在超宽列里左对齐、居中失效。现改为「列宽固定为多数页宽（众数）+ 超大页 `grid-column: 1 / -1` 跨两列独占一行」，
+> 普通页不受超大页影响。判定基准与阈值见 `lib/pdfLayout.ts`（`computeReferenceWidth` / `isOversizePage` / `oversizeMaxWidth`）。
+>
+> **已知取舍**：超大页跨两列会让它**前一张**普通页暂时落单（右侧留空），这是 CSS Grid 自动排布的必然结果；
+> 未启用 `grid-auto-flow: dense`，因为 dense 会打乱阅读顺序（把后面的页回填到前面的空位）。
+>
+> **测量方法**（browse 控制台 / evaluate）：取相邻两 `.pdf-page-wrapper` 的 `getBoundingClientRect()`，
+> 断言 `wrap0.right + 16 ≈ wrap1.left` 且左右边距相等；超大页断言 `.is-oversize` 类存在、`.oversize-badge` 存在、
+> 其 `top` 与前后页不同（独占一行）、`left/right` 边距相等（居中）。
 
 #### 目录（Outline）
 
@@ -249,7 +302,7 @@ node scripts/mock_pdf.mjs --list
 
 ## 三、验收清单
 
-- [ ] `pnpm test` 全部通过（80 个测试）
+- [ ] `pnpm test` 全部通过（106 个测试）
 - [ ] `pnpm lint`（oxfmt + tsc）通过
 - [ ] `pnpm build` 成功，`dist/pdfjs/{cmaps,standard_fonts,wasm,iccs,images}/` 存在
 - [ ] 资源基址以 `/` 结尾、同源（DevTools Network 确认按需 fetch）
@@ -262,6 +315,7 @@ node scripts/mock_pdf.mjs --list
 - [ ] 目录面板正常
 - [ ] 链接可点、表单可填且值在缩放后保留
 - [ ] 中英文 i18n 正常
+- [ ] 双页居中正确（混合页面尺寸下普通页 2-up 居中、超宽页不破坏居中）
 
 ---
 

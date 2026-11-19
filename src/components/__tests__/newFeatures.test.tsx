@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/preact'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PdfViewer } from '../PdfViewer'
-import { pageAtScrollTop, scrollToPage, parsePageInput } from '../../lib/pageNav'
+import { pageAtScrollTop, scrollToPage, parsePageInput, minVisiblePage } from '../../lib/pageNav'
 import { classifyError } from '../PdfViewer'
 
 // 扩展 mock：6 页文档，每页 800x1000
@@ -67,6 +67,10 @@ async function loadPdf() {
   return container
 }
 
+function pageInput(container: Element): HTMLInputElement {
+  return container.querySelector('.page-nav-input') as HTMLInputElement
+}
+
 describe('pageNav helpers', () => {
   it('scrollToPage 返回目标页顶部偏移', () => {
     expect(scrollToPage(1, [0, 1000, 2000])).toBe(0)
@@ -89,6 +93,12 @@ describe('pageNav helpers', () => {
     expect(parsePageInput('0', 5)).toBeNull()
     expect(parsePageInput('6', 5)).toBeNull()
     expect(parsePageInput('abc', 5)).toBeNull()
+  })
+
+  it('minVisiblePage 取可见页中最小页码，空集合保留 fallback', () => {
+    expect(minVisiblePage([3, 1, 2], 9)).toBe(1)
+    expect(minVisiblePage(new Set([4]), 9)).toBe(4)
+    expect(minVisiblePage([], 9)).toBe(9)
   })
 })
 
@@ -196,28 +206,43 @@ describe('PdfViewer 页面导航', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('显示上一页/下一页按钮', async () => {
-    await loadPdf()
+    const container = await loadPdf()
     expect(screen.getByRole('button', { name: '上一页' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '下一页' })).toBeInTheDocument()
+    expect(pageInput(container).value).toBe('1')
     // 第 1 页时上一页禁用
     expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled()
   })
 
   it('点击下一页更新当前页', async () => {
-    await loadPdf()
+    const container = await loadPdf()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     await waitFor(() => {
-      expect(screen.getByText('2 / 6')).toBeInTheDocument()
+      expect(pageInput(container).value).toBe('2')
     })
+    expect(container.querySelector('.page-nav-total')?.textContent).toBe('/ 6')
   })
 
   it('点击上一页回到第 1 页', async () => {
-    await loadPdf()
+    const container = await loadPdf()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
-    await waitFor(() => expect(screen.getByText('2 / 6')).toBeInTheDocument())
+    await waitFor(() => expect(pageInput(container).value).toBe('2'))
     fireEvent.click(screen.getByRole('button', { name: '上一页' }))
-    await waitFor(() => expect(screen.getByText('1 / 6')).toBeInTheDocument())
+    await waitFor(() => expect(pageInput(container).value).toBe('1'))
+  })
+
+  it('输入页码回车跳页，非法页码回退', async () => {
+    const container = await loadPdf()
+    const input = pageInput(container)
+
+    fireEvent.change(input, { target: { value: '5' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(input.value).toBe('5'))
+
+    fireEvent.change(input, { target: { value: '99' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(input.value).toBe('5'))
   })
 })
 

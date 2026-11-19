@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'preact/hooks'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'preact/hooks'
 import { useTranslation } from 'react-i18next'
 import * as pdfjsLib from 'pdfjs-dist'
 
@@ -17,8 +17,20 @@ import type { SliderOption } from './Slider'
 import { LanguageSlider } from './LanguageSlider'
 import { Tooltip } from './Tooltip'
 import { OutlinePanel } from './OutlinePanel'
-import { clampScrollTop } from '../lib/pdfLayout'
-import { pageAtScrollTop, scrollToPage } from '../lib/pageNav'
+import {
+  clampScrollTop,
+  computeReferenceWidth,
+  isOversizePage,
+  oversizeMaxWidth,
+} from '../lib/pdfLayout'
+import {
+  CURRENT_PAGE_ENTER_RATIO,
+  CURRENT_PAGE_EXIT_RATIO,
+  minVisiblePage,
+  pageAtScrollTop,
+  parsePageInput,
+  scrollToPage,
+} from '../lib/pageNav'
 import { pageBatches } from '../lib/pdfLoading'
 import type { AnnotationStorageLike } from '../lib/annotation'
 import { createAnnotationStorage } from '../lib/annotation'
@@ -26,10 +38,13 @@ import {
   BUTTON_ZOOM_STEP,
   clampScale,
   isEditableTarget,
+  rotateBy,
   scrollStepForKey,
   stepZoom,
   wheelZoomScale,
+  type Rotation,
 } from '../lib/interaction'
+import { formatLoadProgress } from '../lib/loadProgress'
 
 const base = import.meta.env.BASE_URL
 
@@ -116,6 +131,67 @@ function DoublePageIcon() {
   )
 }
 
+/** 向左（逆时针）旋转图标 */
+function RotateLeftIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  )
+}
+
+/** 向右（顺时针）旋转图标 */
+function RotateRightIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  )
+}
+
+/** 超大页徽标图标（横向展开箭头） */
+function ExpandIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <polyline points="8 8 4 12 8 16" />
+      <polyline points="16 8 20 12 16 16" />
+    </svg>
+  )
+}
+
 /** PDF 查看器主组件 */
 export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   const { t } = useTranslation()
@@ -123,8 +199,11 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   const [pages, setPages] = useState<pdfjsLib.PDFPageProxy[]>([])
   const [numPages, setNumPages] = useState(0)
   const [scale, setScale] = useState(initialScale)
+  const [rotation, setRotation] = useState<Rotation>(0)
   const [layoutMode, setLayoutMode] = useState<PageLayout>('single')
   const [loading, setLoading] = useState(false)
+  // 文档下载进度（字节）：由 loadingTask.onProgress 更新
+  const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 })
   const [error, setError] = useState<string | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
@@ -132,11 +211,18 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   const [hasOverflow, setHasOverflow] = useState(false)
   const [fileName, setFileName] = useState<string>('')
   const [currentPage, setCurrentPage] = useState(1)
+  // 页码导航输入框：聚焦编辑时不同步 currentPage，失焦/回车后再对齐
+  const [pageInput, setPageInput] = useState('1')
   const [outlineVisible, setOutlineVisible] = useState(false)
   const [annotationStorage, setAnnotationStorage] = useState<AnnotationStorageLike | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const pagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // 视口中「露出自身 ≥45%」的页集合，由 IntersectionObserver 维护
+  const visiblePagesRef = useRef<Set<number>>(new Set())
+  // 输入框是否处于编辑状态（编辑时不被滚动同步覆盖）
+  const pageInputEditingRef = useRef(false)
 
   // 保存 loadingTask 以便换文件/卸载时销毁
   const loadingTaskRef = useRef<pdfjsLib.PDFDocumentLoadingTask | null>(null)
@@ -156,8 +242,12 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
       setNumPages(0)
       setScrollTop(0)
       setCurrentPage(1)
+      setPageInput('1')
+      pageInputEditingRef.current = false
       setAnnotationStorage(null)
       setFileName(file.name)
+      setRotation(0)
+      setLoadProgress({ loaded: 0, total: 0 })
 
       // 换文件前销毁上一个文档，避免 worker / 内存泄漏
       const previous = loadingTaskRef.current
@@ -193,6 +283,10 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
             reason === 2 ? t('error.incorrectPassword') : t('error.passwordRequired'),
           )
           if (pw) updatePassword(pw)
+        }
+        // 文档下载进度：onProgress 在加载过程中多次触发；比对加载序号丢弃过期更新
+        loadingTask.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+          if (loadId === loadIdRef.current) setLoadProgress({ loaded, total })
         }
         loadingTaskRef.current = loadingTask
         const doc = await loadingTask.promise
@@ -278,7 +372,10 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     if (containerRef.current) {
       const top = containerRef.current.scrollTop
       setScrollTop(top)
-      // 反推当前页
+      // 当前页主要由 IntersectionObserver 按「视口内露出 ≥45%」维护；
+      // 只有候选集为空（页间空隙、超高页等）时才退化为顶边判定，
+      // 避免每个滚动事件都对全部页面做 O(N) 布局测量。
+      if (visiblePagesRef.current.size > 0) return
       const wrappers = pagesContainerRef.current?.querySelectorAll<HTMLElement>('.pdf-page-wrapper')
       if (wrappers) {
         const tops: number[] = []
@@ -287,6 +384,52 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
       }
     }
   }, [])
+
+  // 单个共享 IntersectionObserver 追踪视口内的页面：
+  // 页面露出自身 ≥45% 进入候选，<40% 才移出（迟滞防抖）；
+  // 当前页取候选集中页码最小者，与「页顶在上方」的阅读直觉一致。
+  useEffect(() => {
+    const container = containerRef.current
+    const pagesEl = pagesContainerRef.current
+    if (!pdfDoc || !container || !pagesEl) return
+
+    const visible = visiblePagesRef.current
+    visible.clear()
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement
+          const pageNumber = Number(el.dataset.pageNumber)
+          if (!Number.isFinite(pageNumber)) continue
+          if (entry.isIntersecting && entry.intersectionRatio >= CURRENT_PAGE_ENTER_RATIO) {
+            visible.add(pageNumber)
+          } else if (!entry.isIntersecting || entry.intersectionRatio <= CURRENT_PAGE_EXIT_RATIO) {
+            visible.delete(pageNumber)
+          }
+        }
+        setCurrentPage((prev) => minVisiblePage(visible, prev))
+      },
+      {
+        root: container,
+        threshold: [0, CURRENT_PAGE_EXIT_RATIO, CURRENT_PAGE_ENTER_RATIO],
+      },
+    )
+
+    pagesEl
+      .querySelectorAll<HTMLElement>('.pdf-page-wrapper')
+      .forEach((wrapper) => observer.observe(wrapper))
+
+    return () => {
+      observer.disconnect()
+      visible.clear()
+    }
+  }, [pdfDoc, numPages])
+
+  // 非编辑状态下让页码输入框跟随当前页（布局阶段同步，避免跳页后闪回旧值）
+  useLayoutEffect(() => {
+    if (!pageInputEditingRef.current) setPageInput(String(currentPage))
+  }, [currentPage])
 
   // 跳转到指定页（1-based）
   const goToPage = useCallback((pageNumber: number) => {
@@ -303,6 +446,14 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     setScrollTop(top)
     setCurrentPage(pageNumber)
   }, [])
+
+  // 旋转后页面尺寸变化会让视口漂移，重新定位到当前页。
+  // 用 useLayoutEffect 在绘制前完成滚动，避免闪烁；≤2 页无需处理（几乎不漂移）。
+  // 仅在 rotation 变化时触发；currentPage / goToPage 取该次渲染的当前值。
+  useLayoutEffect(() => {
+    if (!pdfDoc || numPages <= 2) return
+    goToPage(currentPage)
+  }, [rotation])
 
   // 监听视口高度与内容真实高度
   // 内容高度取容器的 scrollHeight，确保与 canvas 实际渲染尺寸一致，
@@ -329,13 +480,20 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     if (pagesEl) observer.observe(pagesEl)
 
     return () => observer.disconnect()
-  }, [pages, scale])
+  }, [pages, scale, rotation])
 
   // 10 页以上启用懒加载（用总页数判断，避免分批加载中途翻转导致重复渲染）
   const shouldLazyLoad = numPages >= 10
 
+  // 多数页宽度（自然尺寸下的众数）：双页模式判定超大页的基准。
+  // 仅在页集合或旋转变化时重算，避免滚动时重复 getViewport。
+  const referenceWidth = useMemo(
+    () => computeReferenceWidth(pages.map((p) => p.getViewport({ scale: 1, rotation }).width)),
+    [pages, rotation],
+  )
+
   // 未加载页的占位块比例：取首页宽高比（同一文档页面尺寸通常一致）
-  const firstPageViewport = pages[0]?.getViewport({ scale })
+  const firstPageViewport = pages[0]?.getViewport({ scale, rotation })
   const placeholderAspect = firstPageViewport
     ? `${firstPageViewport.width} / ${firstPageViewport.height}`
     : undefined
@@ -385,6 +543,12 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     { value: 'double', label: t('toolbar.doublePage'), icon: <DoublePageIcon /> },
   ]
 
+  // 文档下载阶段进度（百分比或已加载字节）；尚无回调时为空串
+  const hasDocProgress = loadProgress.total > 0 || loadProgress.loaded > 0
+  const docLoadProgress = hasDocProgress
+    ? formatLoadProgress(loadProgress.loaded, loadProgress.total)
+    : ''
+
   return (
     <div className="pdf-viewer">
       <div className="pdf-toolbar">
@@ -399,7 +563,6 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
           <label htmlFor="file-input" className="file-label">
             {pdfDoc ? t('toolbar.changePdf') : t('toolbar.selectPdf')}
           </label>
-          {pdfDoc && <span className="page-info">{t('pageInfo.pages', { count: numPages })}</span>}
           {pdfDoc && numPages > 0 && (
             <span className="page-nav">
               <button
@@ -411,9 +574,41 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
               >
                 ‹
               </button>
-              <span className="page-nav-current">
-                {currentPage} / {numPages}
-              </span>
+              <input
+                type="text"
+                className="page-nav-input"
+                value={pageInput}
+                onFocus={(e: Event) => {
+                  pageInputEditingRef.current = true
+                  ;(e.currentTarget as HTMLInputElement).select()
+                }}
+                onBlur={() => {
+                  pageInputEditingRef.current = false
+                  setPageInput(String(currentPage))
+                }}
+                onChange={(e: Event) => {
+                  const target = e.target as HTMLInputElement
+                  setPageInput(target.value.replace(/\D/g, ''))
+                }}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (e.key === 'Enter') {
+                    const target = parsePageInput(pageInput, numPages)
+                    if (target !== null) {
+                      goToPage(target)
+                      setPageInput(String(target))
+                      ;(e.currentTarget as HTMLInputElement).blur()
+                    } else {
+                      setPageInput(String(currentPage))
+                    }
+                  } else if (e.key === 'Escape') {
+                    setPageInput(String(currentPage))
+                    ;(e.currentTarget as HTMLInputElement).blur()
+                  }
+                }}
+                inputMode="numeric"
+                aria-label={t('aria.currentPage')}
+              />
+              <span className="page-nav-total">/ {numPages}</span>
               <button
                 className="page-nav-btn"
                 onClick={() => goToPage(Math.min(numPages, currentPage + 1))}
@@ -472,6 +667,26 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
           </Tooltip>
         </div>
         <div className="toolbar-right">
+          <Tooltip label={t('aria.rotateLeft')}>
+            <button
+              className="icon-btn"
+              onClick={() => setRotation((r) => rotateBy(r, -90))}
+              disabled={!pdfDoc}
+              aria-label={t('aria.rotateLeft')}
+            >
+              <RotateLeftIcon />
+            </button>
+          </Tooltip>
+          <Tooltip label={t('aria.rotateRight')}>
+            <button
+              className="icon-btn"
+              onClick={() => setRotation((r) => rotateBy(r, 90))}
+              disabled={!pdfDoc}
+              aria-label={t('aria.rotateRight')}
+            >
+              <RotateRightIcon />
+            </button>
+          </Tooltip>
           <Slider
             value={layoutMode}
             options={layoutOptions}
@@ -513,7 +728,27 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
         </div>
       </div>
 
-      {error && <div className="pdf-error">{error}</div>}
+      {error && (
+        <div className="pdf-error">
+          <span>{error}</span>
+          <button className="pdf-error-close" onClick={() => setError(null)} aria-label="Close">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="pdf-stage">
         <OutlinePanel pdfDoc={pdfDoc} onGoto={goToPage} visible={outlineVisible} />
@@ -532,31 +767,59 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
             </div>
           )}
 
-          {loading && <div className="loading">{t('loading')}</div>}
+          {loading && !pdfDoc && (
+            <div className="loading">
+              <span className="loading-label">{t('loading')}</span>
+              {docLoadProgress && <span className="loading-value">{docLoadProgress}</span>}
+            </div>
+          )}
 
           {pdfDoc && (
             <div
               ref={pagesContainerRef}
               className={`pdf-pages${layoutMode === 'double' ? ' pdf-pages--double' : ''}`}
+              style={
+                layoutMode === 'double' && referenceWidth > 0
+                  ? { gridTemplateColumns: `repeat(2, ${referenceWidth * scale}px)` }
+                  : undefined
+              }
             >
               {Array.from({ length: numPages }, (_, index) => {
                 const pageNumber = index + 1
                 const page = pages[index]
-                const pageViewport = page?.getViewport({ scale })
+                const pageViewport = page?.getViewport({ scale, rotation })
+
+                // 双页模式下：把「超大页」（与多数页宽度相差 > 10%）单独放一行，
+                // 并按需缩放到不超过两页宽度，避免一张异常页撑宽 / 打乱其他页。
+                const isDouble = layoutMode === 'double'
+                const oversize =
+                  !!pageViewport &&
+                  isDouble &&
+                  isOversizePage(pageViewport.width, referenceWidth * scale)
+                let renderScale = scale
+                let displayWidth = pageViewport?.width
+                if (oversize && pageViewport) {
+                  const maxWidth = oversizeMaxWidth(referenceWidth * scale)
+                  if (pageViewport.width > maxWidth) {
+                    renderScale = scale * (maxWidth / pageViewport.width)
+                    displayWidth = maxWidth
+                  }
+                }
 
                 return (
                   <div
                     key={pageNumber}
-                    className="pdf-page-wrapper"
+                    className={`pdf-page-wrapper${oversize ? ' is-oversize' : ''}`}
                     data-page-number={pageNumber}
-                    style={pageViewport ? { width: `${pageViewport.width}px` } : undefined}
+                    style={pageViewport ? { width: `${displayWidth}px` } : undefined}
                   >
                     {page ? (
                       shouldLazyLoad ? (
                         <LazyPDFPage
                           page={page}
                           pdfDoc={pdfDoc}
-                          scale={scale}
+                          scale={renderScale}
+                          rotation={rotation}
                           onGotoPage={goToPage}
                           annotationStorage={annotationStorage ?? undefined}
                         />
@@ -564,7 +827,8 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
                         <PDFPage
                           page={page}
                           pdfDoc={pdfDoc}
-                          scale={scale}
+                          scale={renderScale}
+                          rotation={rotation}
                           onGotoPage={goToPage}
                           annotationStorage={annotationStorage ?? undefined}
                         />
@@ -576,6 +840,15 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
                         className="page-placeholder"
                         style={placeholderAspect ? { aspectRatio: placeholderAspect } : undefined}
                       />
+                    )}
+                    {oversize && (
+                      <span
+                        className="oversize-badge"
+                        title={t('page.oversize')}
+                        aria-hidden="true"
+                      >
+                        <ExpandIcon />
+                      </span>
                     )}
                     <div className="page-number">{pageNumber}</div>
                   </div>
@@ -594,6 +867,14 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
             hasOverflow={hasOverflow}
             onScroll={handleScroll}
           />
+        )}
+
+        {/* 页面代理分批加载阶段：非阻塞进度提示，不覆盖阅读区，避免影响懒加载 */}
+        {loading && pdfDoc && numPages > 0 && pages.length < numPages && (
+          <div className="load-badge" role="status">
+            <span className="load-badge__spinner" aria-hidden="true" />
+            <span>{t('loadingProgress.pages', { loaded: pages.length, total: numPages })}</span>
+          </div>
         )}
       </div>
     </div>

@@ -10,6 +10,17 @@ export const KEYBOARD_SCROLL_STEP = 80
 /** Page Up/Down 滚动一屏的比例 */
 export const PAGE_SCROLL_RATIO = 0.9
 
+/** 页面旋转角度（顺时针，单位：度） */
+export type Rotation = 0 | 90 | 180 | 270
+
+/**
+ * 在当前旋转角度上再旋转 `direction`（顺时针 90 或逆时针 90），
+ * 结果归一化到 0 / 90 / 180 / 270。
+ */
+export function rotateBy(rotation: Rotation, direction: 90 | -90): Rotation {
+  return ((((rotation + direction) % 360) + 360) % 360) as Rotation
+}
+
 /** 将缩放比例限制在允许范围内 */
 export function clampScale(scale: number): number {
   if (!Number.isFinite(scale)) return MIN_SCALE
