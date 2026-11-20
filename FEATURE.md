@@ -371,7 +371,12 @@ if (typeof patch.value === 'string' && patch.formattedValue === undefined) {
 
 **定位方法**：`page.getAnnotations({ intent: 'display' })` 返回的每个注解上带 `hasAppearance` 字段；`hasAppearance === true` 且非表单 widget，说明其外观已在 canvas 上，不应再在注解层渲染。
 
-**处理**：`renderAnnotationLayer` 在调用 `layer.render()` 前，把此类注解过滤掉，只让链接、表单控件、以及无 appearance 的图标类注解（Text/FileAttachment/Stamp 的触发区）进入注解层。
+**处理**：`renderAnnotationLayer` 在调用 `layer.render()` 前做过滤：
+
+- 无 `appearance` 的图标类注解（Text / FileAttachment / Stamp 触发区）、表单 `Widget`、以及启用编辑器时必须保留的可编辑注解（FreeText / Highlight / Ink / Stamp）进入注解层；
+- 其余有 `appearance` 的普通注解交给 canvas，避免叠影。
+
+可编辑注解在编辑模式下由 canvas 的 `isEditing: true` 跳过绘制，改由 ContextEditor 的编辑器层绘制；非编辑模式由 canvas 绘制，注解层里的 FreeText 文本通过下面的 CSS 隐藏。
 
 **关键 CSS**：`src/app.css` 为 `.annotationTextContent` 加上：
 
@@ -382,13 +387,46 @@ if (typeof patch.value === 'string' && patch.formattedValue === undefined) {
 }
 ```
 
-pdf.js 的 `pdf_viewer.css` 中该规式本就存在，本工程未引入 `pdf_viewer.css`，因此需要在 `app.css` 里补齐；否则 FreeText 的 `annotationTextContent` 文本在屏幕可见，与 canvas 上的 appearance 重叠。
+pdf.js 的 `pdf_viewer.css` 中该规则本就存在。本工程在 `ContextEditor` 适配层引入了 `pdf_viewer.css`，同时在 `app.css` 保留同名兜底规则，确保未启用编辑器时也不会叠影。
 
 **Popup 默认展开**：PDF 文件可通过注解的 `open: true` 指定 popup 初始状态。pdf.js 按标准行为会默认展开（鼠标移开后自动隐藏），
 注意浏览器普遍没实现这一点，包括Chrome 158。
 
----
+### 6.7 注解面板（AnnotationEditor）
 
+面板负责**管理已有注解并把改动写回 PDF**，代码在 `src/components/annotationEditor/`。
+
+| 能力 | 实现 |
+| --- | --- |
+| 列表 | `page.getAnnotations({ intent:'display' })` → 归一化 `contentsObj` / `titleObj` / `name` / `rect` / `color` → 过滤 `Popup` / `Widget` → 按页码 + 创建时间排序 |
+| 定位 | 跳页 + 注解层对应元素短暂加 `.annotation--selected` |
+| 新增 | 放置模式：点击页面选点 → `viewport.convertToPdfPoint()` 转 PDF 坐标 → 创建 `/Subtype /Text` 便签 |
+| 编辑 | 写入 `/Contents`、`/T`、`/ModDate` |
+| 删除 | 从页面 `/Annots` 数组移除 |
+| 重新定位 | 更新 `/Rect`，保持原尺寸；暂限同页 |
+| 图标 | 仅 Text 注解，写 `/Name`（10 个 pdf.js 图标：Comment / Note / Help / Key / NewParagraph / Paragraph / Insert / Paperclip / PushPin / Check） |
+
+关键细节：
+
+- **索引**：必须使用**每页** `/Annots` 数组下标；跨页累计长度会错位。`annots.get(i)` 可能是 `PDFRef` 也可能是内联字典，统一 `doc.context.lookup()` 后判断 `PDFDict`。
+- **坐标换算**：不依赖全局缩放值，按被点击页面 DOM 的实际渲染宽度反推 scale，配合页面上的 `data-rotation`，因此 oversize 页、旋转页都能正确映射。放置时显示跟随鼠标的幽灵图标，并夹紧在页面 canvas 视口内。
+- **重载与状态保持**：`documentKey` 只在打开新文件时变化，编辑后的重载会保留面板选中/展开/滚动上下文；`pendingFocus` + `scrollIntoView` + `is-just-changed` 让刚修改的条自动展开并闪烁定位。
+- **加密 PDF**：pdf-lib 遇到 `/Encrypt` 会抛错，统一映射为 `ENCRYPTED_PDF`，面板显示只读提示并禁用增删改。**不使用 `ignoreEncryption`**——那会保留 `/Encrypt` 却写入明文对象，生成损坏文件。
+- **图标语义**：pdf.js 的 Text 注解图标来自 `/Name`，渲染路径是 `annotation-${name.toLowerCase()}.svg`；`/Icon` 不是这个用途。非 Text 注解没有可切换的 `/Name`，因此不显示图标选择器。
+
+尚未实现：拖拽移动、跨页移动、Highlight / Ink 的位置平移（需平移 `QuadPoints` / `InkList`）、回复串 / 富文本、表单 JS 动作。
+
+### 6.8 上下文编辑器（ContextEditor）
+
+代码在 `src/components/contextEditor/`，是对 pdf.js `AnnotationEditorUIManager` / `AnnotationEditorLayer` 的适配层：
+
+- 自建最小事件总线（`on` / `off` / `dispatch`）、`l10n` 替身、`DrawLayer`、默认高亮调色板。
+- 换文档时重置 `AnnotationEditorLayer._initialized`，避免编辑器静态状态继续引用旧 `uiManager`。
+- 提供高亮 / 自由文本 / 手绘的上下文编辑、撤销/重做/删除。
+- 编辑结果目前保存在 pdf.js 的 `annotationStorage` 中，**尚未写回 PDF 字节**；退出编辑后原有注解由 canvas 绘制，用户新增的注解保留在编辑器层。
+- 与 AnnotationEditor 的分工：ContextEditor 负责“在页面上下文里画/改”，AnnotationEditor 负责“列出并持久化已有注解”。
+
+---
 
 ## 7. 导航
 

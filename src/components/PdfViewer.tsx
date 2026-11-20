@@ -17,6 +17,7 @@ import type { SliderOption } from './Slider'
 import { LanguageSlider } from './LanguageSlider'
 import { Tooltip } from './Tooltip'
 import { OutlinePanel } from './OutlinePanel'
+import { AnnotationEditor, AnnotationEditorButton } from './annotationEditor'
 import {
   clampScrollTop,
   computeReferenceWidth,
@@ -34,6 +35,7 @@ import {
 import { pageBatches } from '../lib/pdfLoading'
 import type { AnnotationStorageLike } from '../lib/annotation'
 import { createAnnotationStorage } from '../lib/annotation'
+import { ContextEditorToggle, ContextEditorToolbar, useContextEditor } from './contextEditor'
 import {
   BUTTON_ZOOM_STEP,
   clampScale,
@@ -205,6 +207,8 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   // 文档下载进度（字节）：由 loadingTask.onProgress 更新
   const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 })
   const [error, setError] = useState<string | null>(null)
+  // 单页渲染失败提示（与文档加载错误分开，避免互相覆盖）
+  const [renderError, setRenderError] = useState<string | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
   const [totalHeight, setTotalHeight] = useState(0)
@@ -215,10 +219,19 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
   // 页码导航输入框：聚焦编辑时不同步 currentPage，失焦/回车后再对齐
   const [pageInput, setPageInput] = useState('1')
   const [outlineVisible, setOutlineVisible] = useState(false)
+  const [annotationEditorVisible, setAnnotationEditorVisible] = useState(false)
+  // 仅在「打开新文件」时递增；注解增删改后的重载会保留侧面板状态
+  const [documentKey, setDocumentKey] = useState(0)
   const [annotationStorage, setAnnotationStorage] = useState<AnnotationStorageLike | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const pagesContainerRef = useRef<HTMLDivElement>(null)
+  const viewerRef = useRef<HTMLDivElement>(null)
+  const pendingPageRef = useRef<number | null>(null)
+
+  // 注解编辑：管理器生命周期、编辑模式与工具模式
+  const { contextEditor, editing, editorMode, setEditorMode, toggleEditing, stopEditing } =
+    useContextEditor({ pdfDoc, containerRef, viewerRef })
 
   // 视口中「露出自身 ≥45%」的页集合，由 IntersectionObserver 维护
   const visiblePagesRef = useRef<Set<number>>(new Set())
@@ -233,21 +246,34 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
 
   // 加载 PDF 文件
   const loadPDF = useCallback(
-    async (file: File) => {
+    async (
+      file: File,
+      options?: { keepPanel?: boolean; initialPage?: number; preserveEditorState?: boolean },
+    ) => {
       const loadId = ++loadIdRef.current
+
+      // 只有打开新文件才重置注解面板；编辑后的重载保留选中/展开/滚动上下文
+      if (!options?.preserveEditorState) {
+        setDocumentKey((value) => value + 1)
+      }
 
       setLoading(true)
       setError(null)
+      setRenderError(null)
       setPdfDoc(null)
       setPages([])
       setNumPages(0)
       setScrollTop(0)
-      setCurrentPage(1)
-      setPageInput('1')
+      setCurrentPage(options?.initialPage ?? 1)
+      setPageInput(String(options?.initialPage ?? 1))
       pageInputEditingRef.current = false
       setAnnotationStorage(null)
+      setAnnotationEditorVisible(options?.keepPanel ?? false)
       setFileName(file.name)
       setFile(file)
+      // 增删改后重新加载时，记住要停留的页码；普通新文件则为 null。
+      pendingPageRef.current =
+        options?.initialPage && options.initialPage > 1 ? options.initialPage : null
       setRotation(0)
       setLoadProgress({ loaded: 0, total: 0 })
 
@@ -322,6 +348,22 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     [t],
   )
 
+  // 注解被增删改后，用新字节重新加载 PDF，并尽量停在编辑时所在的页码。
+  const handlePdfModified = useCallback(
+    async (bytes: Uint8Array) => {
+      if (!file) return
+      const newFile = new File([bytes as unknown as BlobPart], file.name, {
+        type: 'application/pdf',
+      })
+      await loadPDF(newFile, {
+        keepPanel: true,
+        initialPage: currentPage,
+        preserveEditorState: true,
+      })
+    },
+    [file, loadPDF, currentPage],
+  )
+
   // 组件卸载时销毁文档
   useEffect(() => {
     return () => {
@@ -334,6 +376,14 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
       loadingTaskRef.current = null
     }
   }, [])
+
+  // 单页渲染失败：只提示该页，不影响其它页
+  const handleRenderError = useCallback(
+    (_error: Error, pageNumber: number) => {
+      setRenderError(t('error.renderFailed', { page: pageNumber }))
+    },
+    [t],
+  )
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault()
@@ -451,6 +501,14 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     setCurrentPage(pageNumber)
   }, [])
 
+  // reload 后若指定了 initialPage，在页面渲染后滚动过去。
+  useEffect(() => {
+    const page = pendingPageRef.current
+    if (!page || !pdfDoc) return
+    pendingPageRef.current = null
+    goToPage(page)
+  }, [pdfDoc, pages, goToPage])
+
   // 旋转后页面尺寸变化会让视口漂移，重新定位到当前页。
   // 用 useLayoutEffect 在绘制前完成滚动，避免闪烁；≤2 页无需处理（几乎不漂移）。
   // 仅在 rotation 变化时触发；currentPage / goToPage 取该次渲染的当前值。
@@ -554,7 +612,7 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
     : ''
 
   return (
-    <div className="pdf-viewer">
+    <div ref={viewerRef} className="pdf-viewer">
       <div className="pdf-toolbar">
         <div className="toolbar-left">
           <input
@@ -701,6 +759,13 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
           <LanguageSlider />
           <ThemeToggle />
           {pdfDoc && (
+            <ContextEditorToggle
+              contextEditor={contextEditor}
+              editing={editing}
+              onToggle={toggleEditing}
+            />
+          )}
+          {pdfDoc && (
             <Tooltip label="目录" align="end">
               <button
                 className={`icon-btn${outlineVisible ? ' is-active' : ''}`}
@@ -728,6 +793,12 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
               </button>
             </Tooltip>
           )}
+          {pdfDoc && (
+            <AnnotationEditorButton
+              visible={annotationEditorVisible}
+              onToggle={() => setAnnotationEditorVisible((v) => !v)}
+            />
+          )}
           <PropBtn
             pdfDoc={pdfDoc}
             pages={pages}
@@ -739,10 +810,17 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
         </div>
       </div>
 
-      {error && (
-        <div className="pdf-error">
-          <span>{error}</span>
-          <button className="pdf-error-close" onClick={() => setError(null)} aria-label="Close">
+      {(error || renderError) && (
+        <div className="pdf-error" role="alert">
+          <span>{error ?? renderError}</span>
+          <button
+            className="pdf-error-close"
+            onClick={() => {
+              setError(null)
+              setRenderError(null)
+            }}
+            aria-label="Close"
+          >
             <svg
               width="14"
               height="14"
@@ -831,8 +909,11 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
                           pdfDoc={pdfDoc}
                           scale={renderScale}
                           rotation={rotation}
+                          onRenderError={handleRenderError}
                           onGotoPage={goToPage}
                           annotationStorage={annotationStorage ?? undefined}
+                          contextEditor={contextEditor}
+                          editing={editing}
                         />
                       ) : (
                         <PDFPage
@@ -840,8 +921,11 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
                           pdfDoc={pdfDoc}
                           scale={renderScale}
                           rotation={rotation}
+                          onRenderError={handleRenderError}
                           onGotoPage={goToPage}
                           annotationStorage={annotationStorage ?? undefined}
+                          contextEditor={contextEditor}
+                          editing={editing}
                         />
                       )
                     ) : (
@@ -869,6 +953,18 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
           )}
         </div>
 
+        <AnnotationEditor
+          pdfDoc={pdfDoc}
+          pages={pages}
+          currentPage={currentPage}
+          file={file}
+          documentKey={documentKey}
+          visible={annotationEditorVisible}
+          onClose={() => setAnnotationEditorVisible(false)}
+          onGotoPage={goToPage}
+          onModified={handlePdfModified}
+        />
+
         {numPages > 0 && (
           <VirtualScrollbar
             totalHeight={totalHeight}
@@ -877,6 +973,15 @@ export function PdfViewer({ initialScale = 1.0 }: PdfViewerProps) {
             pageCount={numPages}
             hasOverflow={hasOverflow}
             onScroll={handleScroll}
+          />
+        )}
+
+        {editing && (
+          <ContextEditorToolbar
+            contextEditor={contextEditor}
+            mode={editorMode}
+            onModeChange={setEditorMode}
+            onDone={stopEditing}
           />
         )}
 

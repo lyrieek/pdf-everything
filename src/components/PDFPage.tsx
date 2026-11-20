@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'preact/hooks'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { AnnotationStorageLike } from '../lib/annotation'
 import { createAnnotationStorage, renderAnnotationLayer } from '../lib/annotation'
+import type { ContextEditor } from './contextEditor'
 
 interface PDFPageProps {
   /** PDF 页面代理 */
@@ -12,12 +13,16 @@ interface PDFPageProps {
   scale: number
   /** 旋转角度（顺时针，0/90/180/270） */
   rotation?: number
-  /** 渲染错误回调 */
-  onRenderError?: (error: Error) => void
+  /** 渲染错误回调（同步抛出与异步 reject 都会触发） */
+  onRenderError?: (error: Error, pageNumber: number) => void
   /** 内部链接（#page=N）跳转回调 */
   onGotoPage?: (pageNumber: number) => void
   /** 跨页面共享的注解存储（表单值需要跨页/跨缩放保留） */
   annotationStorage?: AnnotationStorageLike
+  /** 注解编辑器管理器（提供后启用编辑能力） */
+  contextEditor?: ContextEditor | null
+  /** 是否处于编辑模式 */
+  editing?: boolean
 }
 
 /** 是否为「主动取消」导致的异常（切换缩放/换文件/卸载时属正常） */
@@ -35,7 +40,7 @@ function isCancelled(error: unknown): boolean {
  * PDF 页面渲染组件
  * ----------------
  * 四层叠加（同一尺寸、同一 viewport）：
- * canvas（页面外观）→ 文本层（可选中）→ 注解层（链接/表单）→ 未用层
+ * canvas（页面外观）→ 文本层（可选中）→ 注解层（链接/表单）→ 编辑器层（可选）
  */
 export function PDFPage({
   page,
@@ -45,6 +50,8 @@ export function PDFPage({
   onRenderError,
   onGotoPage,
   annotationStorage,
+  contextEditor = null,
+  editing = false,
 }: PDFPageProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -78,14 +85,25 @@ export function PDFPage({
     // 随后由 AnnotationLayer 在 render 时挂到注解层 DOM 内，与 canvas 同步。
     const annotationCanvasMap = new Map<string, HTMLCanvasElement>()
 
-    // 表单字段交给注解层渲染，canvas 不再重复绘制交互式控件
-    const renderTask = page.render({
-      canvas,
-      viewport,
-      transform,
-      annotationMode: pdfjsLib.AnnotationMode.ENABLE_FORMS,
-      annotationCanvasMap,
-    })
+    // 编辑模式下 canvas 不再绘制可编辑注解（FreeText / Highlight / Ink /
+    // Stamp），改由编辑器层绘制，避免与编辑器内容重复。
+    let renderTask: ReturnType<pdfjsLib.PDFPageProxy['render']>
+    try {
+      renderTask = page.render({
+        canvas,
+        viewport,
+        transform,
+        annotationMode: pdfjsLib.AnnotationMode.ENABLE_FORMS,
+        annotationCanvasMap,
+        isEditing: !!contextEditor && editing,
+      })
+    } catch (error) {
+      // 同步异常（例如 canvas 已被其它渲染任务占用）也要提示，
+      // 否则只会得到一张空白页，用户与开发者都无从排查
+      console.error(`PDF 第 ${page.pageNumber} 页渲染启动失败：`, error)
+      onRenderError?.(error as Error, page.pageNumber)
+      return
+    }
 
     // 文本层：pdfjs v6 的 TextLayer 是 class，必须 new 后调用 render()
     const textContainer = textLayerRef.current
@@ -104,7 +122,7 @@ export function PDFPage({
       }
     }
 
-    // 注解层：链接可点 + 表单可填
+    // 注解层：链接可点 + 表单可填 + 编辑器接管可编辑注解
     const annotationContainer = annotationRef.current
     let annotationLayer: { destroy: () => void } | null = null
 
@@ -119,6 +137,9 @@ export function PDFPage({
           annotationStorage: annotationStorage ?? createAnnotationStorage(),
           annotationCanvasMap,
           onGotoPage: onGotoPage ?? (() => {}),
+          contextEditor,
+          pageIndex: page.pageNumber - 1,
+          textLayerDiv: textContainer,
         })
       } catch (error) {
         console.warn('AnnotationLayer 初始化失败：', error)
@@ -127,7 +148,8 @@ export function PDFPage({
 
     renderTask.promise.catch((error: Error) => {
       if (isCancelled(error)) return
-      onRenderError?.(error)
+      console.error(`PDF 第 ${page.pageNumber} 页渲染失败：`, error)
+      onRenderError?.(error, page.pageNumber)
     })
 
     textLayer?.render().catch((error: Error) => {
@@ -149,12 +171,31 @@ export function PDFPage({
       }
       annotationLayer?.destroy()
     }
-  }, [page, pdfDoc, scale, rotation, onRenderError, onGotoPage, annotationStorage])
+  }, [
+    page,
+    pdfDoc,
+    scale,
+    rotation,
+    onRenderError,
+    onGotoPage,
+    annotationStorage,
+    contextEditor,
+    editing,
+  ])
 
   return (
-    <div ref={hostRef} className="pdf-page-canvas">
+    <div
+      ref={hostRef}
+      className="pdf-page-canvas"
+      data-page-number={page.pageNumber}
+      data-rotation={rotation}
+    >
       <canvas ref={canvasRef} className="pdf-page-canvas__canvas" />
-      <div ref={textLayerRef} className="pdf-page-canvas__text-layer" />
+      <div
+        ref={textLayerRef}
+        className="pdf-page-canvas__text-layer textLayer"
+        data-main-rotation={rotation}
+      />
       <div ref={annotationRef} className="pdf-page-canvas__annotation-layer" />
     </div>
   )

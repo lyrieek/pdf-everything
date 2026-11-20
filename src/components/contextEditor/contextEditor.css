@@ -1,0 +1,37 @@
+/* ===== 上下文编辑器层 ===== */
+
+/* 编辑器层覆盖在 canvas / 文本层 / 注解层之上 */
+.pdf-page-canvas > .annotationEditorLayer {
+  z-index: 3;
+}
+
+/* 绘制 / 拖拽编辑器时禁止选中页面文本 */
+.pdf-viewer.noUserSelect {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
+/* 悬浮上下文编辑工具栏 */
+.context-editor-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+}
+
+.context-editor-toolbar__divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--border-color);
+}

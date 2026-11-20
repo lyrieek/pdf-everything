@@ -26,6 +26,10 @@ pnpm test
 | `src/lib/__tests__/pdfLoading.test.ts` | `pageBatches` 分批切页（每批大小、边界、空区间） |
 | `src/lib/__tests__/loadProgress.test.ts` | `formatBytes` / `formatLoadProgress`（字节进位、百分比、流式降级） |
 | `src/lib/__tests__/annotation.test.ts` | `createAnnotationStorage`（含 formattedValue 镜像）、`createDestResolver`（数字/对象引用/命名目标）、`createLinkService`（hash/外链属性/跳转） |
+| `src/components/annotationEditor/__tests__/annotationTypes.test.ts` | 注解归一化（contents / title / name / rect / index）、过滤与排序、类型 / 图标 i18n key、图标映射、幽灵图标地址、10 个 Text 图标选项 |
+| `src/components/annotationEditor/__tests__/pdfAnnotationOps.test.ts` | pdf-lib 注解操作：更新 Contents / T / Name / Rect、删除、居中新增、越界安全、加密异常映射 |
+| `src/components/annotationEditor/__tests__/AnnotationItem.test.tsx` | Text 图标选择器（10 个 / active / 回调）、非 Text 不显示、只读禁用、`is-just-changed`、编辑态保存读取本地草稿 |
+| `src/components/annotationEditor/__tests__/AnnotationEditor.test.tsx` | 面板空态、列表渲染、跨页跳转、关闭按钮 |
 | `src/lib/__tests__/useFocusTrap.test.tsx` | 焦点陷阱：初始焦点、Tab 循环、Escape 关闭、焦点还原 |
 | `src/components/__tests__/TimeValue.test.tsx` | 时间值：显示绝对时间 + tooltip 相对时间 |
 | `src/lib/__tests__/pdfDate.test.ts` | PDF 日期：`parsePdfDate` / `formatDate` / `formatPdfDate`（合法、非 PDF 格式、越界） |
@@ -295,6 +299,42 @@ node scripts/mock_pdf.mjs --list
 > **另注意**：pdf.js 的 `useSystemFonts` 默认 `true`，本机有 Helvetica 时可能根本不 fetch
 > `standard_fonts/`。要强制验证该资源路径，需在应用侧设 `useSystemFonts: false`。
 
+#### 注解编辑（AnnotationEditor）
+
+入口：工具栏「注解」按钮（`annotation-comment.svg`）。面板默认「当前页」，可切「全部」。
+
+| 场景 | 预期结果 |
+|------|----------|
+| 查看 / 定位 | 列表显示图标、内容、作者、页码；点条目跳到对应页，页面上的注解短暂出现强调色描边 |
+| 展开详情 | 显示完整内容、作者、创建/修改时间；内容长时换行不溢出 |
+| 新增（放置模式） | 点「新增注解」→ 十字光标 + 面板提示；鼠标在页面上时出现跟随图标，移到面板/页面外隐藏，靠边时被夹在页面视口内；点击页面后出现脉冲落点标记与内容/作者表单 |
+| 新增保存 | 列表数量 +1；新条自动展开、滚到可见区并闪烁；落点标记与幽灵图标消失；页面注解层出现新图标 |
+| Esc / 取消 | 幽灵图标、落点标记、放置提示全部消失，不新增 |
+| 编辑内容 / 作者 | 保存后内容更新；条目保持展开并闪烁；侧面板不重置、不丢失当前项 |
+| 更换图标 | Text 注解详情显示 10 个图标；切换后列表图标与页面图标同步（例如 `annotation-note.svg` → `annotation-key.svg`），当前图标高亮 |
+| 重新定位 | Text / FreeText 详情出现「重新定位」；点当前页新位置后注解移动（`/Rect` 更新），尺寸保持不变 |
+| 删除 | 确认后条目消失，页面上的注解同步消失 |
+| 多页 / 全部页 | 「全部页」模式点其它页注解会跳页；新增时点哪一页就落在哪一页 |
+| 加密 PDF | 顶部黄色提示「该 PDF 已加密，暂不支持修改注解」；新增/编辑/删除/图标选择均禁用；**不出现** pdf-lib 的英文 encrypted 异常 |
+| 重载稳定性 | 任何增删改后，面板仍保持打开与当前范围，刚改项自动展开并闪烁，能立刻确认改的是哪一条 |
+
+**踩坑经验（注解编辑）**：
+
+1. **Text 注解图标字段是 `/Name`，不是 `/Icon`**。pdf.js 的渲染路径是
+   `annotation-${data.name.toLowerCase()}.svg`，所以换图标必须写 `/Name`。
+2. **pdf-lib 遇到 `/Encrypt` 会直接抛错**。不要用 `ignoreEncryption: true` 强行写回：
+   会保留加密字典却写入明文对象，生成的 PDF 会损坏。当前策略是映射为 `ENCRYPTED_PDF` 并禁用编辑。
+3. **注解索引必须按每页 `/Annots` 下标**，不能用跨页累计长度；否则多页文档会改错注解。
+4. `annots.get(i)` 可能返回 `PDFRef`，也可能是内联字典。统一 `doc.context.lookup()` 后判断 `PDFDict`。
+5. **自动化测试的时序**：输入后立刻点保存时，如果保存按钮读的是父组件 props，可能拿到旧值。
+   组件已改为本地草稿 state；测试仍建议 `fill()` 后再单独点击保存，模拟真实用户事件。
+6. **编辑后整份 PDF 重载会重置面板**。用 `documentKey` 区分「打开新文件」与「编辑重载」；
+   `pendingFocus + scrollIntoView + is-just-changed` 让刚改项自动展开并闪烁。
+7. **坐标换算不要用全局 scale**：oversize 页的渲染 scale 不同。应按被点击页面 DOM 的实际渲染宽度反推 scale，并读页面上的 `data-rotation`。
+8. **幽灵图标限制在页面内**：用 `position: fixed` 跟随鼠标，位置夹紧到 host 的 `getBoundingClientRect()`；鼠标在面板或页面外时隐藏。
+9. **测试 PDF 里的字符串必须用 `PDFString.of(...)`**。直接写 JS 字符串会被 pdf-lib 编码成 PDFName，pdf.js 读不到 `/Contents`。
+10. **`window.confirm` 会暂停浏览器的自动化页面**。browse MCP 需要显式 `dialog accept`；覆盖 `window.confirm` 不一定生效。
+
 #### 属性面板
 
 | 场景 | 预期结果 |
@@ -331,7 +371,7 @@ node scripts/mock_pdf.mjs --list
 
 ## 三、验收清单
 
-- [ ] `pnpm test` 全部通过（163 个测试）
+- [ ] `pnpm test` 全部通过（204 个测试）
 - [ ] `pnpm lint`（oxfmt + tsc）通过
 - [ ] `pnpm build` 成功，`dist/pdfjs/{cmaps,standard_fonts,wasm,iccs,images}/` 存在
 - [ ] 资源基址以 `/` 结尾、同源（DevTools Network 确认按需 fetch）
@@ -343,6 +383,9 @@ node scripts/mock_pdf.mjs --list
 - [ ] 页码导航正常
 - [ ] 目录面板正常
 - [ ] 链接可点、表单可填且值在缩放后保留
+- [ ] 注解面板：新增（放置模式）/ 编辑 / 删除 / 重新定位 / Text 图标切换正常
+- [ ] 注解改动重载后，侧面板保持选中与展开，刚改项有闪烁定位
+- [ ] 加密 PDF 的注解编辑显示只读提示，而不是 pdf-lib 英文异常
 - [ ] 中英文 i18n 正常
 - [ ] 双页居中正确（混合页面尺寸下普通页 2-up 居中、超宽页不破坏居中）
 - [ ] 属性面板：元数据、日期 / 相对时间、页面尺寸、平均每页占用、线性化检测、INI 复制正常

@@ -58,3 +58,10 @@ Object.defineProperty(Element.prototype, 'scrollTo', {
   configurable: true,
   value: vi.fn(),
 })
+
+// jsdom 未实现 scrollIntoView
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  writable: true,
+  configurable: true,
+  value: vi.fn(),
+})

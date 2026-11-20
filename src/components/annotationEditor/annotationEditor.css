@@ -1,0 +1,889 @@
+/* ===== 注解面板（AnnotationEditor） ===== */
+
+.annotation-editor-panel {
+  --ae-panel-width: 320px;
+  position: relative;
+  width: var(--ae-panel-width);
+  max-width: 42vw;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 120px),
+    var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  color: var(--text-primary);
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+/* ---------- 头部 ---------- */
+
+.annotation-editor-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.annotation-editor-panel__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.annotation-editor-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.annotation-editor-panel__badge img {
+  width: 18px;
+  height: 18px;
+}
+
+.annotation-editor-panel__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.annotation-editor-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.annotation-editor-panel__subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.annotation-editor-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.annotation-editor-panel__close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ---------- 工具条 ---------- */
+
+.annotation-editor-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.annotation-editor-panel__segmented {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.annotation-editor-panel__segmented button {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    box-shadow var(--transition);
+}
+
+.annotation-editor-panel__segmented button:hover {
+  color: var(--text-primary);
+}
+
+.annotation-editor-panel__segmented button.is-active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.annotation-editor-panel__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    transform var(--transition);
+}
+
+.annotation-editor-panel__icon-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.annotation-editor-panel__icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* ---------- 新增注解 ---------- */
+
+.annotation-editor-panel__add {
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.annotation-editor-panel__add-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 38%, var(--border-color));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.annotation-editor-panel__add-toggle:hover,
+.annotation-editor-panel__add-toggle.is-open {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.annotation-editor-panel__add-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.annotation-editor-panel__add-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.annotation-editor-panel__notice {
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, #f0a020 38%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, #f0a020 12%, transparent);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.annotation-editor-panel__placing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 7px 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.annotation-editor-panel__placing > span {
+  flex: 1;
+}
+
+.annotation-editor-panel__placing button {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.annotation-editor-panel__placing button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* 放置模式的临时落点标记 */
+.annotation-place-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  pointer-events: none;
+  z-index: 8;
+  animation: annotation-place-pulse 1.15s ease-out infinite;
+}
+
+@keyframes annotation-place-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 16px transparent;
+  }
+}
+
+/* 放置时跟随鼠标的幽灵图标（fixed 定位，限制在页面视口内） */
+.annotation-place-ghost {
+  position: fixed;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+.annotation-place-ghost img {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.annotation-editor-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.annotation-editor-add-form__textarea,
+.annotation-editor-add-form__author,
+.annotation-editor-item__edit-text,
+.annotation-editor-item__edit-author {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border, var(--border-color));
+  border-radius: 6px;
+  background: var(--input-bg, var(--bg-primary));
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.annotation-editor-add-form__textarea:focus,
+.annotation-editor-add-form__author:focus,
+.annotation-editor-item__edit-text:focus,
+.annotation-editor-item__edit-author:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--input-focus, rgba(233, 69, 96, 0.18));
+}
+
+.annotation-editor-add-form__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ---------- 列表 ---------- */
+
+.annotation-editor-panel__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 2px 10px 12px;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.annotation-editor-panel__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.annotation-editor-panel__list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.annotation-editor-panel__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 状态 ---------- */
+
+.annotation-editor-panel__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.annotation-editor-panel__state--error {
+  color: var(--error-text, var(--accent));
+}
+
+.annotation-editor-panel__state--empty {
+  font-size: 13px;
+}
+
+.annotation-editor-panel__empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  font-size: 20px;
+  filter: grayscale(0.2);
+}
+
+.annotation-editor-panel__empty-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.85;
+  max-width: 220px;
+  line-height: 1.5;
+}
+
+.annotation-editor-panel__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: annotation-editor-spin 0.7s linear infinite;
+}
+
+@keyframes annotation-editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 单条注解 ---------- */
+
+.annotation-editor-item {
+  position: relative;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  overflow: hidden;
+  text-align: left;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
+}
+
+.annotation-editor-item:hover {
+  border-color: var(--border-light, var(--border-color));
+  box-shadow: var(--shadow-sm);
+}
+
+.annotation-editor-item.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-color));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* 刚修改过的条目：短暂闪光，帮助用户定位 */
+.annotation-editor-item.is-just-changed {
+  animation: annotation-editor-flash 1.4s ease-out;
+}
+
+@keyframes annotation-editor-flash {
+  0% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
+  }
+  100% {
+    border-color: var(--border-color);
+    box-shadow: none;
+    background: var(--bg-primary);
+  }
+}
+
+.annotation-editor-item.is-selected > .annotation-editor-item__row {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.annotation-editor-item__row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 8px 9px 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background var(--transition);
+}
+
+.annotation-editor-item__row:hover {
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.annotation-editor-item__row:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.annotation-editor-item__color {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+}
+
+.annotation-editor-item__icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+}
+
+.annotation-editor-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.annotation-editor-item__icon img,
+.annotation-editor-item__icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.annotation-editor-item__main {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.annotation-editor-item__contents {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.annotation-editor-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.annotation-editor-item__author {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.annotation-editor-item__page {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.annotation-editor-item__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.annotation-editor-item__toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.annotation-editor-item__chevron {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  transition: transform var(--transition);
+}
+
+.annotation-editor-item__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* ---------- 详情 ---------- */
+
+.annotation-editor-item__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px 49px;
+  text-align: left;
+  animation: annotation-editor-reveal 0.16s ease-out;
+}
+
+@keyframes annotation-editor-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.annotation-editor-item__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.annotation-editor-item__label {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.annotation-editor-item__value {
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.annotation-editor-item__meta-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+}
+
+.annotation-editor-item__inline-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.annotation-editor-item__author-text {
+  display: inline-block;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: copy;
+}
+
+.annotation-editor-item__author-text:focus-visible {
+  outline: 1px dotted var(--text-muted);
+  outline-offset: 2px;
+}
+
+.annotation-editor-item__copy-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ---------- 操作按钮 ---------- */
+
+.annotation-editor-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.annotation-editor-item__action {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    transform var(--transition);
+}
+
+.annotation-editor-item__action:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-light, var(--border-color));
+  color: var(--text-primary);
+}
+
+.annotation-editor-item__action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.annotation-editor-item__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.annotation-editor-item__action.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.annotation-editor-item__action.is-primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.annotation-editor-item__action.is-danger {
+  color: var(--error-text, var(--accent));
+}
+
+.annotation-editor-item__action.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-color));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--error-text, var(--accent));
+}
+
+/* ---------- 图标选择 ---------- */
+
+.annotation-editor-item__icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.annotation-editor-item__icon-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.annotation-editor-item__icon-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+
+.annotation-editor-item__icon-option img {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.annotation-editor-item__icon-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-color));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.annotation-editor-item__icon-option:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.annotation-editor-item__icon-option.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.annotation-editor-item__icon-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 编辑态 ---------- */
+
+.annotation-editor-item__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.annotation-editor-item__edit-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.annotation-editor-item__edit-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.annotation-editor-item__edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* 选中注解时在注解层短暂高亮 */
+.pdf-page-canvas__annotation-layer [data-annotation-id].annotation--selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition:
+    outline-color var(--transition),
+    background-color var(--transition);
+}
+
+/* 窄屏时覆盖在页面之上，避免挤压阅读区 */
+@media (max-width: 720px) {
+  .annotation-editor-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: var(--ae-panel-width);
+    max-width: 86vw;
+    box-shadow: var(--shadow-lg);
+  }
+}

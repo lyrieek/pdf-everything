@@ -1,5 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFPageProxy } from 'pdfjs-dist'
+import {
+  createContextEditorLayer,
+  type ContextEditor,
+  type ContextEditorLayerHandle,
+} from '../components/contextEditor/contextEditor'
 
 /**
  * AnnotationLayer 接入层
@@ -174,6 +179,8 @@ type AnnotationLayerRenderParams = Parameters<pdfjsLib.AnnotationLayer['render']
 
 /** AnnotationLayer 的句柄，用于在 effect 清理时销毁 */
 export interface AnnotationLayerHandle {
+  /** 注解层与编辑器层都完成首次渲染后 resolve */
+  ready: Promise<void>
   destroy: () => void
 }
 
@@ -190,6 +197,31 @@ export interface RenderAnnotationLayerOptions {
   pdfDoc?: pdfjsLib.PDFDocumentProxy | null
   /** 注解外观 canvas 映射（hasOwnCanvas 注解的外观绘制在此 canvas 上，随后挂到 DOM 注解层内） */
   annotationCanvasMap?: Map<string, HTMLCanvasElement>
+  /** 注解编辑器管理器；提供后启用编辑能力并创建编辑器层 */
+  contextEditor?: ContextEditor | null
+  /** 0-based 页索引，编辑器层需要 */
+  pageIndex?: number
+  /** 文本层元素；高亮需要基于文本选择创建 */
+  textLayerDiv?: HTMLDivElement | null
+}
+
+/**
+ * 过滤掉会在注解层重复绘制的外观。
+ *
+ * - 有 appearance 的普通注解（方形、圆形等）已由 canvas 绘制，跳过；
+ * - 表单控件需要注解层渲染；
+ * - 可编辑注解（FreeText / Highlight / Ink / Stamp）在启用编辑器时必须保留，
+ *   否则编辑器层拿不到它们，无法接管显示与编辑。
+ */
+function filterAnnotations(
+  annotations: { hasAppearance?: boolean; subtype?: string; isEditable?: boolean }[],
+  keepEditable: boolean,
+) {
+  return annotations.filter((a) => {
+    if (!a.hasAppearance) return true
+    if (a.subtype === 'Widget') return true
+    return keepEditable && a.isEditable === true
+  })
 }
 
 /**
@@ -203,8 +235,18 @@ export interface RenderAnnotationLayerOptions {
 export function renderAnnotationLayer(
   options: RenderAnnotationLayerOptions,
 ): AnnotationLayerHandle {
-  const { div, page, viewport, annotationStorage, onGotoPage, pdfDoc, annotationCanvasMap } =
-    options
+  const {
+    div,
+    page,
+    viewport,
+    annotationStorage,
+    onGotoPage,
+    pdfDoc,
+    annotationCanvasMap,
+    contextEditor,
+    pageIndex,
+    textLayerDiv,
+  } = options
   const linkService = createLinkService({
     onGotoPage,
     resolveDestPage: pdfDoc ? createDestResolver(pdfDoc) : undefined,
@@ -213,7 +255,7 @@ export function renderAnnotationLayer(
   const layer = new pdfjsLib.AnnotationLayer({
     div,
     accessibilityManager: undefined,
-    annotationEditorUIManager: undefined,
+    annotationEditorUIManager: contextEditor?.uiManager,
     page,
     viewport,
     structTreeLayer: undefined,
@@ -224,22 +266,17 @@ export function renderAnnotationLayer(
   } as unknown as AnnotationLayerCtor)
 
   let disposed = false
+  let contextEditorLayer: ContextEditorLayerHandle | null = null
 
-  page
+  const ready = page
     .getAnnotations({ intent: 'display' })
-    .then((annotations) => {
-      if (disposed || !annotations?.length) return
-      // ENABLE_FORMS 下，canvas 已绘制所有非表单注解的 appearance（如 FreeText 的外观）。
-      // 注解层只渲染链接、表单控件及无 appearance 的图标类注解（Text/FileAttachment/Stamp 等），
-      // 避免已在 canvas 上绘制的外观在注解层重复绘制导致叠影。
-      const filtered = annotations.filter(
-        (a) =>
-          !(
-            (a as { hasAppearance?: boolean; subtype?: string }).hasAppearance &&
-            (a as { subtype?: string }).subtype !== 'Widget'
-          ),
-      )
-      return layer.render({
+    .then(async (annotations) => {
+      if (disposed) return
+      // ENABLE_FORMS 下，canvas 已绘制所有非表单注解的 appearance。
+      // 注解层只渲染链接、表单控件、无 appearance 的图标类注解，
+      // 以及启用编辑器时必须保留的可编辑注解（供编辑器层接管）。
+      const filtered = filterAnnotations(annotations ?? [], !!contextEditor)
+      await layer.render({
         viewport,
         div,
         annotations: filtered,
@@ -249,9 +286,28 @@ export function renderAnnotationLayer(
         annotationStorage,
         imageResourcesPath: ANNOTATION_IMAGE_RESOURCES_PATH,
         renderForms: true,
-        enableAnnotationEditing: false,
+        enableAnnotationEditing: !!contextEditor,
         enableScripting: false,
       } as unknown as AnnotationLayerRenderParams)
+
+      if (disposed || !contextEditor || pageIndex == null || !textLayerDiv) return
+      const parent = div.parentElement
+      if (!parent) return
+      try {
+        contextEditorLayer = createContextEditorLayer({
+          manager: contextEditor,
+          pageIndex,
+          viewport,
+          annotationLayer: layer,
+          textLayerDiv,
+          pdfDoc,
+          parent,
+        })
+        await contextEditorLayer.ready
+      } catch (error) {
+        if (disposed) return
+        console.warn('ContextEditorLayer 初始化失败：', error)
+      }
     })
     .catch((error: unknown) => {
       if (disposed) return
@@ -259,8 +315,14 @@ export function renderAnnotationLayer(
     })
 
   return {
+    ready,
     destroy: () => {
       disposed = true
+      try {
+        contextEditorLayer?.destroy()
+      } catch {
+        /* noop */
+      }
       try {
         layer.destroy()
       } catch {
