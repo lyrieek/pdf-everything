@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useFocusTrap } from '../lib/useFocusTrap'
 import type { PdfFont } from '../lib/pdfFonts'
+import { splitSubsetPrefix } from '../lib/pdfFonts'
 
 interface FontListModalProps {
   /** 字体列表（最多 50 个） */
@@ -49,15 +50,23 @@ export function FontListModal({ fonts, onClose }: FontListModalProps) {
         </div>
         <div className="modal-body">
           <ul className="font-list">
-            {fonts.map((font) => (
-              <li key={font.name}>
-                <span className="font-list__name">{font.name}</span>
-                {font.embedded && <span className="font-tag">{t('modal.embedded')}</span>}
-                {font.subset && (
-                  <span className="font-tag font-tag--subset">{t('modal.subset')}</span>
-                )}
-              </li>
-            ))}
+            {fonts.map((font) => {
+              const [subsetPrefix, fontName] = splitSubsetPrefix(font.name)
+              return (
+                <li key={font.name}>
+                  <span className="font-list__name">
+                    {subsetPrefix && (
+                      <span className="font-list__name--subset">{subsetPrefix}</span>
+                    )}
+                    {fontName}
+                  </span>
+                  {font.embedded && <span className="font-tag">{t('modal.embedded')}</span>}
+                  {font.subset && (
+                    <span className="font-tag font-tag--subset">{t('modal.subset')}</span>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
         <div className="modal-footer modal-footer--end">

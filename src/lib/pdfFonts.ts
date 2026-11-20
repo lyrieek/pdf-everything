@@ -50,6 +50,12 @@ function isSubset(name: string): boolean {
   return SUBSET_PREFIX.test(name)
 }
 
+/** 把字体名拆成 [子集前缀, 剩余名]；非子集返回 [null, name] */
+export function splitSubsetPrefix(name: string): [string | null, string] {
+  const m = name.match(SUBSET_PREFIX)
+  return m ? [m[0], name.slice(m[0].length)] : [null, name]
+}
+
 /**
  * 从一页的操作列表中收集字体，加入 `into`（按字体名去重）。
  * 未解析 / 无字体名 / 非 setFont 操作会被忽略。

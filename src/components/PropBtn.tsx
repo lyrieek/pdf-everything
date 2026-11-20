@@ -13,7 +13,8 @@ import { buildIni, copyToClipboard, type PropertyItem } from '../lib/propertyExp
 import { usePageSizes } from '../lib/usePageSizes'
 import { usePerPageSize } from '../lib/usePerPageSize'
 import { useLinearized } from '../lib/useLinearized'
-import { usePdfFonts } from '../lib/usePdfFonts'
+import { usePdfFonts, FONT_PREVIEW_LIMIT } from '../lib/usePdfFonts'
+import { splitSubsetPrefix } from '../lib/pdfFonts'
 import './PropBtn.css'
 
 interface PropBtnProps {
@@ -118,8 +119,9 @@ export function PropBtn({ pdfDoc, pages, fileName, currentPage, numPages, file }
   })
   const { perPageState, perPageText } = usePerPageSize({ file, totalPages, isOpen })
   const { linearized, linearizedState } = useLinearized({ file, isOpen })
-  const { fonts, fontsState, fontPreview, fontModalOpen, openFontModal, closeFontModal, showMore } =
-    usePdfFonts({ pdfDoc, totalPages, isOpen })
+  const { fonts, fontsState, fontModalOpen, openFontModal, closeFontModal, showMore } = usePdfFonts(
+    { pdfDoc, totalPages, isOpen },
+  )
 
   // 修改时间缺失，或与创建时间相同，则隐藏「修改时间」（渲染与复制都生效，因为共用 groups）
   const hideModified = !modificationDate || creationDate === modificationDate
@@ -162,13 +164,27 @@ export function PropBtn({ pdfDoc, pages, fileName, currentPage, numPages, file }
     </span>
   )
 
-  // 字体值：扫描中显示骨架；否则显示预览，超过 3 个时右侧给「更多字体」按钮
+  // 字体值：扫描中显示骨架；否则每个字体带嵌入/子集标签，超过 3 个时右侧给「更多字体」按钮
   const fontsNode: ComponentChildren =
     fontsState === 'calculating' ? (
       <span className="loading-inline" role="status" aria-label={t('modal.calculating')} />
     ) : (
-      <span className="page-size-cell">
-        <span>{formatValue(fontPreview)}</span>
+      <span className="font-preview">
+        {fonts.slice(0, FONT_PREVIEW_LIMIT).map((font) => {
+          const [subsetPrefix, fontName] = splitSubsetPrefix(font.name)
+          return (
+            <span key={font.name} className="font-item">
+              <span className="font-item__name">
+                {subsetPrefix && <span className="font-item__name--subset">{subsetPrefix}</span>}
+                {fontName}
+              </span>
+              {font.embedded && <span className="font-tag">{t('modal.embedded')}</span>}
+              {font.subset && (
+                <span className="font-tag font-tag--subset">{t('modal.subset')}</span>
+              )}
+            </span>
+          )
+        })}
         {showMore && (
           <button type="button" className="btn-link" onClick={openFontModal}>
             {t('modal.moreFonts')}

@@ -517,24 +517,23 @@ describe('PropBtn', () => {
     expect(container.querySelector('.page-size-cell--center')).toBeNull()
   })
 
-  it('文档信息显示字体：最多 3 个，超过时弹出完整列表', async () => {
-    const fontNames = ['Helvetica', 'Arial', 'Times New Roman', 'Courier']
+  it('文档信息显示字体：最多 3 个，超过时弹出完整列表，嵌入与子集带标签', async () => {
+    const fontInfos = [
+      { name: 'Helvetica', loadedName: 'Helvetica', missingFile: true },
+      { name: 'Arial', loadedName: 'Arial', data: new Uint8Array([1]) },
+      { name: 'ABCDEF+Times New Roman', loadedName: 'Times New Roman', missingFile: true },
+      { name: 'Courier', loadedName: 'Courier', missingFile: true },
+    ]
     const page = {
       getViewport: vi.fn(() => ({ width: 595, height: 842 })),
       getOperatorList: vi.fn(() =>
         Promise.resolve({
-          fnArray: fontNames.map(() => 37),
-          argsArray: fontNames.map((_, i) => [`g_f${i}`, 12]),
+          fnArray: fontInfos.map(() => 37),
+          argsArray: fontInfos.map((_, i) => [`g_f${i}`, 12]),
         }),
       ),
       commonObjs: {
-        get: (id: string) => {
-          const name = fontNames[Number(id.replace('g_f', ''))]
-          // Arial 有字体文件 → 嵌入；其余视为系统/标准字体
-          return name === 'Arial'
-            ? { loadedName: name, data: new Uint8Array([1]) }
-            : { loadedName: name, missingFile: true }
-        },
+        get: (id: string) => fontInfos[Number(id.replace('g_f', ''))],
       },
     }
     const doc = {
@@ -559,8 +558,10 @@ describe('PropBtn', () => {
     fireEvent.click(screen.getByRole('button', { name: 'modal.moreFonts' }))
     await waitFor(() => expect(screen.getByText('modal.fonts · 4')).toBeInTheDocument())
     expect(screen.getByText('Courier')).toBeInTheDocument()
-    // 嵌入字体带「嵌入」标签（仅 Arial）
-    expect(screen.getAllByText('modal.embedded')).toHaveLength(1)
+    // 嵌入字体带「嵌入」标签：行内预览 1 个 + 弹窗列表 1 个 = 2 个
+    expect(screen.getAllByText('modal.embedded')).toHaveLength(2)
+    // 子集字体带「子集」标签：行内预览 1 个 + 弹窗列表 1 个 = 2 个
+    expect(screen.getAllByText('modal.subset')).toHaveLength(2)
   })
 })
 

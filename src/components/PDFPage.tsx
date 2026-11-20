@@ -74,12 +74,17 @@ export function PDFPage({
 
     const transform = dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined
 
+    // 注解外观 canvas 映射：hasOwnCanvas 注解的外观先绘制在此 canvas 上，
+    // 随后由 AnnotationLayer 在 render 时挂到注解层 DOM 内，与 canvas 同步。
+    const annotationCanvasMap = new Map<string, HTMLCanvasElement>()
+
     // 表单字段交给注解层渲染，canvas 不再重复绘制交互式控件
     const renderTask = page.render({
       canvas,
       viewport,
       transform,
       annotationMode: pdfjsLib.AnnotationMode.ENABLE_FORMS,
+      annotationCanvasMap,
     })
 
     // 文本层：pdfjs v6 的 TextLayer 是 class，必须 new 后调用 render()
@@ -112,6 +117,7 @@ export function PDFPage({
           pdfDoc,
           viewport,
           annotationStorage: annotationStorage ?? createAnnotationStorage(),
+          annotationCanvasMap,
           onGotoPage: onGotoPage ?? (() => {}),
         })
       } catch (error) {

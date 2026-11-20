@@ -10,7 +10,7 @@ const FONT_SCAN_BATCH = 8
 const FONT_LIST_LIMIT = 50
 
 /** 行内最多预览几个字体 */
-const FONT_PREVIEW_LIMIT = 3
+export const FONT_PREVIEW_LIMIT = 3
 
 interface UsePdfFontsOptions {
   pdfDoc: PDFDocumentProxy | null

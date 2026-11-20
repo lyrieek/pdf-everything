@@ -799,6 +799,170 @@ body {
   outline: 1px solid var(--accent);
 }
 
+/* ===== 注解层完整样式（参考 pdf.js pdf_viewer.css，适配本项目 CSS 变量） ===== */
+.pdf-page-canvas__annotation-layer {
+  pointer-events: none;
+}
+
+.pdf-page-canvas__annotation-layer section {
+  pointer-events: auto;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
+.pdf-page-canvas__annotation-layer .annotationContent {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-page-canvas__annotation-layer .annotationContent.freetext {
+  background: transparent;
+  border: none;
+  overflow: visible;
+  white-space: nowrap;
+  font: 10px sans-serif;
+  line-height: 1.35;
+}
+
+.pdf-page-canvas__annotation-layer .overlaidText {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: inline-block;
+  overflow: hidden;
+}
+
+/* FreeText 等注解的文本内容仅供无障碍阅读，不在屏幕上可见（外观已在 canvas 上绘制） */
+.pdf-page-canvas__annotation-layer .annotationTextContent {
+  opacity: 0;
+  color: transparent;
+}
+
+/* 链接 / 推按钮：铺满注解矩形 */
+.pdf-page-canvas__annotation-layer :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton) > a {
+  position: absolute;
+  font-size: 1em;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* 文本注解图标填满注解矩形，避免溢出 */
+.pdf-page-canvas__annotation-layer .textAnnotation img {
+  position: absolute;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+/* 文件附件触发区填满注解矩形 */
+.pdf-page-canvas__annotation-layer .fileAttachmentAnnotation .popupTriggerArea {
+  height: 100%;
+  width: 100%;
+}
+
+/* hasBorder：边框图案铺满 */
+.pdf-page-canvas__annotation-layer .hasBorder {
+  background-size: 100% 100%;
+}
+
+/* quadrilaterals（高亮/下划线等四边形遮罩） */
+.pdf-page-canvas__annotation-layer section svg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+.pdf-page-canvas__annotation-layer svg.quadrilateralsContainer {
+  contain: strict;
+  width: 0;
+  height: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+
+/* popup 注解容器 */
+.pdf-page-canvas__annotation-layer .popupAnnotation {
+  position: absolute;
+  font-size: calc(9px * var(--total-scale-factor, 1));
+  pointer-events: none;
+  width: -moz-max-content;
+  width: max-content;
+  max-width: 45%;
+  height: auto;
+}
+
+.pdf-page-canvas__annotation-layer .popup {
+  background-color: rgb(255 255 153);
+  color: black;
+  box-shadow: 0 calc(2px * var(--total-scale-factor, 1)) calc(5px * var(--total-scale-factor, 1))
+    rgb(136 136 136);
+  border-radius: calc(2px * var(--total-scale-factor, 1));
+  outline: 1.5px solid rgb(255 255 74);
+  padding: calc(6px * var(--total-scale-factor, 1));
+  cursor: pointer;
+  font: message-box;
+  white-space: normal;
+  word-wrap: break-word;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.pdf-page-canvas__annotation-layer .popupAnnotation.focused .popup {
+  outline-width: 3px;
+}
+
+.pdf-page-canvas__annotation-layer .popup * {
+  font-size: calc(9px * var(--total-scale-factor, 1));
+}
+
+.pdf-page-canvas__annotation-layer .popup > .header {
+  display: inline-block;
+}
+
+.pdf-page-canvas__annotation-layer .popup > .header > .title {
+  display: inline;
+  font-weight: bold;
+}
+
+.pdf-page-canvas__annotation-layer .popup > .header .popupDate {
+  display: inline-block;
+  margin-left: calc(5px * var(--total-scale-factor, 1));
+  width: -moz-fit-content;
+  width: fit-content;
+}
+
+.pdf-page-canvas__annotation-layer .popupContent {
+  border-top: 1px solid rgb(51 51 51);
+  margin-top: calc(2px * var(--total-scale-factor, 1));
+  padding-top: calc(2px * var(--total-scale-factor, 1));
+}
+
+.pdf-page-canvas__annotation-layer .richText > * {
+  white-space: pre-wrap;
+  font-size: calc(9px * var(--total-scale-factor, 1));
+}
+
+.pdf-page-canvas__annotation-layer .popupTriggerArea {
+  cursor: pointer;
+}
+
 .page-number {
   position: absolute;
   bottom: -20px;

@@ -15,7 +15,7 @@
 | P2 | **搜索、页面标签、worker 复用、`getDocument` 调优、移动端手势** | ⬜ 待做 |
 | P3 | 注解层、焦点管理 | ✅ 已完成（移出本文档） |
 | P3 | **旋转、加载进度** | ✅ 已完成（移出本文档） |
-| P3 | **适配模式、注释编辑、下载打印** | ⬜ 待做 |
+| P3 | **适配模式、注解编辑、下载打印** | ⬜ 待做 |
 | P3 | **可访问性补齐** | ⬜ 部分完成 |
 | — | 缩略图侧栏 | ⏸️ 已决策暂不做 |
 
@@ -131,7 +131,7 @@
 
 ---
 
-### 7. 注释 / 高亮交互
+### 7. 注解 / 高亮交互
 
 **现状**：`enableAnnotationEditing: false`、`enableScripting: false`，只能看不能改。
 
@@ -139,7 +139,7 @@
 
 - 编辑能力需要 `pdfjsLib.AnnotationEditorUIManager` + `AnnotationEditorLayer`（主包已导出），
   注解层构造时传入 `annotationEditorUIManager`。
-- 先支持**查看注释内容**（hover / 点击弹出便签），再考虑新增高亮、便签。
+- 先支持**查看注解内容**（hover / 点击弹出便签），再考虑新增高亮、便签。
 - 内嵌 JS 动作（Keystroke / Format 校验）需要 `enableScripting: true` + `hasJSActions` + `annotationStorage`，
   注意它依赖 `linkService.eventBus`，目前该接口是空实现，需要先补齐。
 

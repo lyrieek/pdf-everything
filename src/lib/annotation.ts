@@ -188,6 +188,8 @@ export interface RenderAnnotationLayerOptions {
   onGotoPage: (pageNumber: number) => void
   /** 用于解析 dest 里的对象引用 / 命名目标；省略时只支持数字页索引 */
   pdfDoc?: pdfjsLib.PDFDocumentProxy | null
+  /** 注解外观 canvas 映射（hasOwnCanvas 注解的外观绘制在此 canvas 上，随后挂到 DOM 注解层内） */
+  annotationCanvasMap?: Map<string, HTMLCanvasElement>
 }
 
 /**
@@ -201,7 +203,8 @@ export interface RenderAnnotationLayerOptions {
 export function renderAnnotationLayer(
   options: RenderAnnotationLayerOptions,
 ): AnnotationLayerHandle {
-  const { div, page, viewport, annotationStorage, onGotoPage, pdfDoc } = options
+  const { div, page, viewport, annotationStorage, onGotoPage, pdfDoc, annotationCanvasMap } =
+    options
   const linkService = createLinkService({
     onGotoPage,
     resolveDestPage: pdfDoc ? createDestResolver(pdfDoc) : undefined,
@@ -210,7 +213,6 @@ export function renderAnnotationLayer(
   const layer = new pdfjsLib.AnnotationLayer({
     div,
     accessibilityManager: undefined,
-    annotationCanvasMap: undefined,
     annotationEditorUIManager: undefined,
     page,
     viewport,
@@ -218,6 +220,7 @@ export function renderAnnotationLayer(
     commentManager: undefined,
     linkService,
     annotationStorage,
+    annotationCanvasMap,
   } as unknown as AnnotationLayerCtor)
 
   let disposed = false
@@ -226,10 +229,20 @@ export function renderAnnotationLayer(
     .getAnnotations({ intent: 'display' })
     .then((annotations) => {
       if (disposed || !annotations?.length) return
+      // ENABLE_FORMS 下，canvas 已绘制所有非表单注解的 appearance（如 FreeText 的外观）。
+      // 注解层只渲染链接、表单控件及无 appearance 的图标类注解（Text/FileAttachment/Stamp 等），
+      // 避免已在 canvas 上绘制的外观在注解层重复绘制导致叠影。
+      const filtered = annotations.filter(
+        (a) =>
+          !(
+            (a as { hasAppearance?: boolean; subtype?: string }).hasAppearance &&
+            (a as { subtype?: string }).subtype !== 'Widget'
+          ),
+      )
       return layer.render({
         viewport,
         div,
-        annotations,
+        annotations: filtered,
         page,
         linkService,
         downloadManager: undefined,

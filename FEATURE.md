@@ -238,7 +238,7 @@ return () => {
 
 ### 4.3 为什么用 `AnnotationMode.ENABLE_FORMS`
 
-`page.render` 默认 `annotationMode = ENABLE`（只画注释外观）。
+`page.render` 默认 `annotationMode = ENABLE`（只画注解外观）。
 本工程用 `ENABLE_FORMS`：**交互式表单控件从 canvas 排除**，交给注解层渲染成真正的
 `<input>` / `<select>`。否则会出现「canvas 画了一遍 + 注解层又画一遍」的重影。
 
@@ -365,7 +365,30 @@ if (typeof patch.value === 'string' && patch.formattedValue === undefined) {
 `imageResourcesPath` 指向 `${base}pdfjs/images/`，构建时拷贝 11 个 `annotation-*.svg`
 （note / help / insert / key / paperclip / pushpin 等）。
 
+### 6.6 避免注解层与 canvas 重复绘制（叠影修复）
+
+`page.render({ annotationMode: ENABLE_FORMS })` 下，**非表单注解的外观（FreeText / Text / Stamp 等的 appearance）已经在 canvas 上绘制**。注解层若再渲染这些注解，就会出现「canvas 画了一遍 + 注解层又画一遍」的叠影，尤其是 FreeText 的灰色背景文本会在注解层重复显示。
+
+**定位方法**：`page.getAnnotations({ intent: 'display' })` 返回的每个注解上带 `hasAppearance` 字段；`hasAppearance === true` 且非表单 widget，说明其外观已在 canvas 上，不应再在注解层渲染。
+
+**处理**：`renderAnnotationLayer` 在调用 `layer.render()` 前，把此类注解过滤掉，只让链接、表单控件、以及无 appearance 的图标类注解（Text/FileAttachment/Stamp 的触发区）进入注解层。
+
+**关键 CSS**：`src/app.css` 为 `.annotationTextContent` 加上：
+
+```css
+.pdf-page-canvas__annotation-layer .annotationTextContent {
+  opacity: 0;
+  color: transparent;
+}
+```
+
+pdf.js 的 `pdf_viewer.css` 中该规式本就存在，本工程未引入 `pdf_viewer.css`，因此需要在 `app.css` 里补齐；否则 FreeText 的 `annotationTextContent` 文本在屏幕可见，与 canvas 上的 appearance 重叠。
+
+**Popup 默认展开**：PDF 文件可通过注解的 `open: true` 指定 popup 初始状态。pdf.js 按标准行为会默认展开（鼠标移开后自动隐藏），
+注意浏览器普遍没实现这一点，包括Chrome 158。
+
 ---
+
 
 ## 7. 导航
 

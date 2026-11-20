@@ -169,6 +169,8 @@ numPages（立即可知）
 `canvas` 负责外观，`TextLayer` 负责选择，`AnnotationLayer` 负责交互，三者共用同一 viewport。
 `page.render` 使用 `AnnotationMode.ENABLE_FORMS`，把交互式表单交给注解层，避免画两遍。
 
+> **术语统一**：本项目遵循 ISO 32000 / PDF 规范，将 PDF Annotation 统一译为 **"注解"**。代码变量名、API、文档（FEATURE.md）中均一致使用 "注解"，**不使用** "注释""批注""标注" 等其他译法，Adobe Acrobat 中文版使用"注释"，让Widget Annotation尴尬，福昕阅读器/WPS使用"批注"，让Link Annotation都尴尬，都偏离规范。若后续 UI 需要向用户展示相关标签，统一使用 "注解"，不可七嘴八舌混用不同词。
+
 ---
 
 ## 交互速查
@@ -235,6 +237,6 @@ pnpm test
 - **无适配模式**（适合宽度 / 页面 / 实际大小）
 - **无下载 / 打印**
 - **移动端无手势**（双指缩放等）
-- **不支持注释编辑**（`enableAnnotationEditing: false`）
+- **不支持注解编辑**（`enableAnnotationEditing: false`）
 
 缩略图侧栏**已决策暂不实现**，`ThumbnailSidebar.tsx` 仅保留类型骨架（无实现、无调用）。

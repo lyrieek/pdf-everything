@@ -342,6 +342,32 @@
   color: var(--text-secondary);
 }
 
+/* 子集字体名前缀（如 BCDEEE+）：淡化，其余部分保持正常 */
+.font-item__name--subset,
+.font-list__name--subset {
+  color: var(--text-muted);
+}
+
+/* 属性面板行内字体：名 + 嵌入/子集标签 */
+.font-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.font-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.font-item__name {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 .btn-link {
   flex: 0 0 auto;
   padding: 2px 6px;
